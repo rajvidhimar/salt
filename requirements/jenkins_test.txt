@@ -1,0 +1,8 @@
+git+https://github.com/Juniper/salt.git@develop
+git+https://github.com/Juniper/py-junos-eznc.git
+git+https://github.com/saltstack/pytest-salt.git@master#egg=pytest-salt
+mock
+jxmlease
+nose
+salttesting
+coverage
