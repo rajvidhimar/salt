@@ -361,34 +361,26 @@ def commit(**kwargs):
     op['detail'] = op.get('detail', False)
 
     try:
-        commit_ok = conn.cu.commit_check()
+        conn.cu.commit_check()
     except Exception as exception:
-        ret['message'] = 'Could not perform commit check due to "{0}"'.format(
+        ret['message'] = 'Commit check failed due to "{0}"'.format(
             exception)
         ret['out'] = False
         return ret
 
-    if commit_ok:
-        try:
-            commit = conn.cu.commit(**op)
-            ret['out'] = True
-            if commit:
-                if op['detail']:
-                    ret['message'] = jxmlease.parse(etree.tostring(commit))
-                else:
-                    ret['message'] = 'Commit Successful.'
-            else:
-                ret['message'] = 'Commit failed.'
-                ret['out'] = False
-        except Exception as exception:
-            ret['out'] = False
-            ret['message'] = \
-                'Commit check succeeded but actual commit failed with "{0}"' \
-                .format(exception)
-    else:
+    try:
+        commit_response = conn.cu.commit(**op)
+        ret['out'] = True
+        if op['detail']:
+            ret['message'] = jxmlease.parse(etree.tostring(commit_response))
+        else:
+            ret['message'] = 'Commit Successful.'
+    except Exception as exception:
         ret['out'] = False
-        ret['message'] = 'Pre-commit check failed.'
-        conn.cu.rollback()
+        ret['message'] = \
+            'Commit check succeeded but actual commit failed with "{0}"' \
+            .format(exception)
+
     return ret
 
 

@@ -88,3 +88,8 @@ tests/integration/cloud/providers/logs
 
 # Private keys from the integration tests
 tests/integration/cloud/providers/pki/minions
+
+#My files
+.coveragerc
+venv
+func_env

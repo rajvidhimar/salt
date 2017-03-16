@@ -51,6 +51,41 @@ class TestJunosModule(unittest.TestCase):
         self.assertTrue(result['dev']['out'])
         self.caller.cmd('dev', 'junos.rollback', [1])
 
+    def test_commit_check_exception(self):
+        dev = Device(host='10.221.141.48', user='regress', passwd='MaRtInI')
+        dev.open()
+        cu = Config(dev)
+        cu.load('set interfaces lo0 unit 57 family inet address 10.0.0.1/32')
+        dev.close()
+        result = self.caller.cmd('dev', 'junos.commit')
+        self.assertTrue('Commit check failed due to' in result['dev']['message'])
+        self.assertFalse(result['dev']['out'])
+        self.caller.cmd('dev', 'junos.rollback')
+
+    def test_commit_exception(self):
+        dev = Device(host='10.221.141.48', user='regress', passwd='MaRtInI')
+        dev.open()
+        cu = Config(dev)
+        cu.load('set interfaces ge-0/0/1 description "salt test"')
+        dev.close()
+        result = self.caller.cmd('dev', 'junos.commit', kwarg = {'confirm': 0.1})
+        self.assertTrue('Commit check succeeded but actual commit failed with' in result['dev']['message'] )
+        self.assertFalse(result['dev']['out'])
+        self.caller.cmd('dev', 'junos.rollback')
+
+    def test_commit_with_detail_as_arg(self):
+        dev = Device(host='10.221.141.48', user='regress', passwd='MaRtInI')
+        dev.open()
+        cu = Config(dev)
+        cu.load('set interfaces ge-0/0/2 description "salt test"')
+        dev.close()
+        result = self.caller.cmd('dev', 'junos.commit', kwarg={'detail': True})
+        self.assertTrue('routing-engine' in result['dev']['message'])
+        self.assertTrue('name' in result['dev']['message']['routing-engine'])
+        self.assertTrue(isinstance(result['dev']['message']['routing-engine']['progress-indicator'], list))
+        self.assertTrue(result['dev']['out'])
+        self.caller.cmd('dev', 'junos.rollback', [1])
+
     def test_diff(self):
         dev = Device(host='10.221.141.48', user='regress', passwd='MaRtInI')
         dev.open()
