@@ -372,10 +372,10 @@ class Test_Junos_Module(unittest.TestCase):
         self.assertEqual(junos.commit(), ret)
 
     @patch('jnpr.junos.utils.config.Config.commit_check')
-    def test_commit_raise_commit_check_exeception(self, mock_commit_check):
+    def test_commit_raise_commit_check_exception(self, mock_commit_check):
         mock_commit_check.side_effect = self.raise_exception
         ret = dict()
-        ret['message'] = 'Could not perform commit check due to "Test exception"'
+        ret['message'] = 'Commit check failed due to "Test exception"'
         ret['out'] = False
         self.assertEqual(junos.commit(), ret)
 
@@ -426,25 +426,6 @@ class Test_Junos_Module(unittest.TestCase):
         junos.commit(**args)
         mock_commit.assert_called_with(
             comment='comitted via salt', detail=True, confirm=3)
-
-    @patch('jnpr.junos.utils.config.Config.commit_check')
-    @patch('jnpr.junos.utils.config.Config.commit')
-    def test_commit_pyez_commit_returning_false(
-            self, mock_commit, mock_commit_check):
-        mock_commit.return_value = False
-        mock_commit_check.return_value = True
-        ret = dict()
-        ret['message'] = 'Commit failed.'
-        ret['out'] = False
-        self.assertEqual(junos.commit(), ret)
-
-    @patch('jnpr.junos.utils.config.Config.commit_check')
-    def test_commit_pyez_commit_check_returns_false(self, mock_commit_check):
-        mock_commit_check.return_value = False
-        ret = dict()
-        ret['out'] = False
-        ret['message'] = 'Pre-commit check failed.'
-        self.assertEqual(junos.commit(), ret)
 
     @patch('jnpr.junos.utils.config.Config.rollback')
     def test_rollback_exception(self, mock_rollback):
