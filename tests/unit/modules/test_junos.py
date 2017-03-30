@@ -287,7 +287,7 @@ class Test_Junos_Module(TestCase):
             self, mock_commit_check):
         mock_commit_check.side_effect = self.raise_exception
         ret = dict()
-        ret['message'] = 'Could not commit check due to error "Test exception"'
+        ret['message'] = 'Commit check failed with "Test exception"'
         ret['out'] = False
         self.assertEqual(junos.set_hostname('test-name'), ret)
 
@@ -353,16 +353,6 @@ class Test_Junos_Module(TestCase):
         ret['message'] = 'Successfully loaded host-name but commit failed with "Test exception"'
         ret['out'] = False
         self.assertEqual(junos.set_hostname('test-name'), ret)
-
-    @patch('jnpr.junos.utils.config.Config.commit_check')
-    @patch('salt.modules.junos.rollback')
-    def test_set_hostname_fail_commit_check(
-            self, mock_rollback, mock_commit_check):
-        mock_commit_check.return_value = False
-        ret = dict()
-        ret['out'] = False
-        ret['message'] = 'Successfully loaded host-name but pre-commit check failed.'
-        self.assertEqual(junos.set_hostname('test'), ret)
 
     @patch('jnpr.junos.utils.config.Config.commit_check')
     @patch('jnpr.junos.utils.config.Config.commit')

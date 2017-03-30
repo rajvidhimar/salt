@@ -275,33 +275,29 @@ def set_hostname(hostname=None, **kwargs):
         conn.cu.load(set_string, format='set')
     except Exception as exception:
         ret['message'] = 'Could not load configuration due to error "{0}"'.format(
-            exception)
+            exception.message)
         ret['out'] = False
         return ret
 
     try:
-        commit_ok = conn.cu.commit_check()
+        conn.cu.commit_check()
     except Exception as exception:
-        ret['message'] = 'Could not commit check due to error "{0}"'.format(
-            exception)
+        ret['message'] = 'Commit check failed with "{0}"'.format(
+            exception.message)
         ret['out'] = False
+        conn.cu.rollback()
         return ret
 
-    if commit_ok:
-        try:
-            conn.cu.commit(**op)
-            ret['message'] = 'Successfully changed hostname.'
-            ret['out'] = True
-        except Exception as exception:
-            ret['out'] = False
-            ret['message'] = 'Successfully loaded host-name but commit failed with "{0}"'.format(
-                exception)
-            return ret
-    else:
+    try:
+        conn.cu.commit(**op)
+        ret['message'] = 'Successfully changed hostname.'
+        ret['out'] = True
+    except Exception as exception:
         ret['out'] = False
-        ret[
-            'message'] = 'Successfully loaded host-name but pre-commit check failed.'
+        ret['message'] = 'Successfully loaded host-name but commit failed with "{0}"'.format(
+            exception.message)
         conn.cu.rollback()
+
     return ret
 
 
@@ -347,10 +343,10 @@ def commit(**kwargs):
               When true return commit detail.
 
     '''
-
     conn = __proxy__['junos.conn']()
     ret = {}
     op = dict()
+
     if '__pub_arg' in kwargs:
         if kwargs['__pub_arg']:
             if isinstance(kwargs['__pub_arg'][-1], dict):
@@ -364,7 +360,7 @@ def commit(**kwargs):
         conn.cu.commit_check()
     except Exception as exception:
         ret['message'] = 'Commit check failed due to "{0}"'.format(
-            exception)
+            exception.message)
         ret['out'] = False
         return ret
 
@@ -379,7 +375,7 @@ def commit(**kwargs):
         ret['out'] = False
         ret['message'] = \
             'Commit check succeeded but actual commit failed with "{0}"' \
-            .format(exception)
+            .format(exception.message)
 
     return ret
 
@@ -427,15 +423,10 @@ def rollback(id=0, **kwargs):
     try:
         ret['out'] = conn.cu.rollback(id)
     except Exception as exception:
-        ret['message'] = 'Rollback failed due to "{0}"'.format(exception)
+        ret['message'] = 'Rollback failed due to "{0}"'.format(exception.message)
         ret['out'] = False
         return ret
-
-    if ret['out']:
-        ret['message'] = 'Rollback successful'
-    else:
-        ret['message'] = 'Rollback failed'
-        return ret
+    ret['message'] = 'Rollback successful'
 
     if 'diffs_file' in op and op['diffs_file'] is not None:
         diff = conn.cu.diff()
@@ -448,26 +439,22 @@ def rollback(id=0, **kwargs):
                 rollbacked configuration, so no diff file created')
 
     try:
-        commit_ok = conn.cu.commit_check()
+        conn.cu.commit_check()
     except Exception as exception:
-        ret['message'] = 'Could not commit check due to "{0}"'.format(
-            exception)
+        ret['message'] = 'Commit check failed with "{0}"'.format(
+            exception.message)
         ret['out'] = False
         return ret
 
-    if commit_ok:
-        try:
-            conn.cu.commit(**op)
-            ret['out'] = True
-        except Exception as exception:
-            ret['out'] = False
-            ret['message'] = \
-                'Rollback successful but commit failed with error "{0}"'\
-                    .format(exception)
-            return ret
-    else:
-        ret['message'] = 'Rollback succesfull but pre-commit check failed.'
+    try:
+        conn.cu.commit(**op)
+        ret['out'] = True
+    except Exception as exception:
         ret['out'] = False
+        ret['message'] = \
+            'Rollback successful but commit failed with error "{0}"'\
+                .format(exception.message)
+
     return ret
 
 
@@ -624,7 +611,7 @@ def cli(command=None, format='text', **kwargs):
     try:
         result = conn.cli(command, format, warning=False)
     except Exception as exception:
-        ret['message'] = 'Execution failed due to "{0}"'.format(exception)
+        ret['error'] = 'Execution failed due to "{0}"'.format(exception)
         ret['out'] = False
         return ret
 
