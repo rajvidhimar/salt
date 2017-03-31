@@ -281,7 +281,7 @@ def get(tgt,
         :py:func:`saltutil.runner <salt.modules.saltutil.runner>` module. For
         example:
 
-        .. code-block:: jinja
+        .. code-block:: yaml
 
             {% set minion_ips = salt.saltutil.runner('mine.get',
                 tgt='*',

@@ -23,11 +23,3 @@ Example minion configuration file
 
 .. literalinclude:: ../../../conf/minion
     :language: yaml
-
-.. _configuration-examples-proxy:
-
-Example proxy minion configuration file
-=======================================
-
-.. literalinclude:: ../../../conf/proxy
-    :language: yaml

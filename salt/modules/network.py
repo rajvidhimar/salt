@@ -216,7 +216,7 @@ def _ppid():
     '''
     ret = {}
     if __grains__['kernel'] == 'SunOS':
-        cmd = 'ps -a -o pid,ppid | tail +2'
+        cmd = 'ps -a -o pid,ppid | tail -n+2'
     else:
         cmd = 'ps -ax -o pid,ppid | tail -n+2'
     out = __salt__['cmd.run'](cmd, python_shell=True)
@@ -308,11 +308,10 @@ def _netstat_sunos():
     Return netstat information for SunOS flavors
     '''
     log.warning('User and program not (yet) supported on SunOS')
-
     ret = []
     for addr_family in ('inet', 'inet6'):
         # Lookup TCP connections
-        cmd = 'netstat -f {0} -P tcp -an | tail +5'.format(addr_family)
+        cmd = 'netstat -f {0} -P tcp -an | tail -n+5'.format(addr_family)
         out = __salt__['cmd.run'](cmd, python_shell=True)
         for line in out.splitlines():
             comps = line.split()
@@ -324,7 +323,7 @@ def _netstat_sunos():
                 'remote-address': comps[1],
                 'state': comps[6]})
         # Lookup UDP connections
-        cmd = 'netstat -f {0} -P udp -an | tail +5'.format(addr_family)
+        cmd = 'netstat -f {0} -P udp -an | tail -n+5'.format(addr_family)
         out = __salt__['cmd.run'](cmd, python_shell=True)
         for line in out.splitlines():
             comps = line.split()
@@ -481,7 +480,7 @@ def _netstat_route_sunos():
     Return netstat routing information for SunOS
     '''
     ret = []
-    cmd = 'netstat -f inet -rn | tail +5'
+    cmd = 'netstat -f inet -rn | tail -n+5'
     out = __salt__['cmd.run'](cmd, python_shell=True)
     for line in out.splitlines():
         comps = line.split()
@@ -492,7 +491,7 @@ def _netstat_route_sunos():
             'netmask': '',
             'flags': comps[2],
             'interface': comps[5] if len(comps) >= 6 else ''})
-    cmd = 'netstat -f inet6 -rn | tail +5'
+    cmd = 'netstat -f inet6 -rn | tail -n+5'
     out = __salt__['cmd.run'](cmd, python_shell=True)
     for line in out.splitlines():
         comps = line.split()
@@ -1512,7 +1511,7 @@ def ifacestartswith(cidr):
 
 def iphexval(ip):
     '''
-    Retrieve the hexadecimal representation of an IP address
+    Retrieve the interface name from a specific CIDR
 
     .. versionadded:: 2016.11.0
 
@@ -1523,5 +1522,7 @@ def iphexval(ip):
         salt '*' network.iphexval 10.0.0.1
     '''
     a = ip.split('.')
-    hexval = ['%02X' % int(x) for x in a]  # pylint: disable=E1321
-    return ''.join(hexval)
+    hexval = ""
+    for val in a:
+        hexval = ''.join([hexval, hex(int(val))[2:].zfill(2)])
+    return hexval.upper()

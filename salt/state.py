@@ -1680,12 +1680,7 @@ class State(object):
         troot = os.path.join(self.opts['cachedir'], self.jid)
         tfile = os.path.join(troot, tag)
         if not os.path.isdir(troot):
-            try:
-                os.makedirs(troot)
-            except OSError:
-                # Looks like the directory was created between the check
-                # and the attempt, we are safe to pass
-                pass
+            os.makedirs(troot)
         with salt.utils.fopen(tfile, 'wb+') as fp_:
             fp_.write(msgpack.dumps(ret))
 

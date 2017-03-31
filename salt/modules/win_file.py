@@ -74,7 +74,7 @@ HAS_WIN_DACL = False
 try:
     if salt.utils.is_windows():
         import salt.utils.win_dacl
-        HAS_WIN_DACL = True
+        HAS_WIN_DACL = salt.utils.win_dacl.HAS_WIN32
 except ImportError:
     HAS_WIN_DACL = False
 

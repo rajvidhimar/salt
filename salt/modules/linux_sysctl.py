@@ -177,6 +177,7 @@ def persist(name, value, config=None):
     '''
     if config is None:
         config = default_config()
+    running = show()
     edited = False
     # If the sysctl.conf is not present, add it
     if not os.path.isfile(config):
@@ -228,11 +229,15 @@ def persist(name, value, config=None):
             # This is the line to edit
             if str(comps[1]) == str(value):
                 # It is correct in the config, check if it is correct in /proc
-                if str(get(name)) != str(value):
-                    assign(name, value)
-                    return 'Updated'
+                if name in running:
+                    if str(running[name]) != str(value):
+                        assign(name, value)
+                        return 'Updated'
+                    else:
+                        return 'Already set'
+                # It is missing from the running config. We can not set it.
                 else:
-                    return 'Already set'
+                    raise CommandExecutionError('sysctl {0} does not exist'.format(name))
 
             nlines.append('{0} = {1}\n'.format(name, value))
             edited = True

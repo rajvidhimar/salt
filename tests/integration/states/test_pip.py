@@ -39,12 +39,9 @@ class PipStateTest(integration.ModuleCase, integration.SaltReturnAssertsMixIn):
         '''
         Tests installed and removed states
         '''
-        name = 'pudb'
-        if name in self.run_function('pip.list'):
-            self.skipTest('{0} is already installed, uninstall to run this test'.format(name))
-        ret = self.run_state('pip.installed', name=name)
+        ret = self.run_state('pip.installed', name='docker-py')
         self.assertSaltTrueReturn(ret)
-        ret = self.run_state('pip.removed', name=name)
+        ret = self.run_state('pip.removed', name='docker-py')
         self.assertSaltTrueReturn(ret)
 
     def test_pip_installed_errors(self):

@@ -90,7 +90,7 @@ def is_connection_usable():
         return True
 
 
-def __django_auth_setup():
+def django_auth_setup():
     '''
     Prepare the connection to the Django authentication framework
     '''
@@ -125,7 +125,7 @@ def auth(username, password):
         sys.path.append(django_auth_path)
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', __opts__['django_auth_settings'])
 
-    __django_auth_setup()
+    django_auth_setup()
 
     if not is_connection_usable():
         connection.close()
@@ -135,19 +135,22 @@ def auth(username, password):
     if user is not None:
         if user.is_active:
             log.debug('Django authentication successful')
+
+            auth_dict_from_db = retrieve_auth_entries(username)[username]
+            if auth_dict_from_db is not None:
+                return auth_dict_from_db
+
             return True
         else:
             log.debug('Django authentication: the password is valid but the account is disabled.')
-    else:
-        log.debug('Django authentication failed.')
 
     return False
 
 
-def acl(username):
+def retrieve_auth_entries(u=None):
     '''
 
-    :param username: Username to filter for
+    :param u: Username to filter for
     :return: Dictionary that can be slotted into the ``__opts__`` structure for
         eauth that designates the user associated ACL
 
@@ -182,12 +185,12 @@ def acl(username):
             - .*
 
     '''
-    __django_auth_setup()
+    django_auth_setup()
 
-    if username is None:
+    if u is None:
         db_records = DJANGO_AUTH_CLASS.objects.all()
     else:
-        db_records = DJANGO_AUTH_CLASS.objects.filter(user_fk__username=username)
+        db_records = DJANGO_AUTH_CLASS.objects.filter(user_fk__username=u)
     auth_dict = {}
 
     for a in db_records:

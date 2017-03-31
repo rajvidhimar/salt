@@ -85,12 +85,6 @@ except ImportError:
     HAS_WIN32API = False
 
 try:
-    import salt.utils.win_functions
-    HAS_WIN32 = True
-except ImportError:
-    HAS_WIN32 = False
-
-try:
     import grp
     HAS_GRP = True
 except ImportError:
@@ -290,10 +284,12 @@ def get_user():
     '''
     if HAS_PWD:
         return pwd.getpwuid(os.geteuid()).pw_name
-    elif HAS_WIN32:
-        return salt.utils.win_functions.get_current_user()
     else:
-        raise CommandExecutionError("Required external libraries not found. Need 'pwd' or 'win32api")
+        user_name = win32api.GetUserNameEx(win32api.NameSamCompatible)
+        if user_name[-1] == '$' and win32api.GetUserName() == 'SYSTEM':
+            # Make the system account easier to identify.
+            user_name = 'SYSTEM'
+        return user_name
 
 
 def get_uid(user=None):
@@ -755,12 +751,11 @@ def ip_bracket(addr):
     return addr
 
 
-def dns_check(addr, port, safe=False, ipv6=None):
+def dns_check(addr, port, safe=False, ipv6=None, connect=True):
     '''
     Return the ip resolved by dns, but do not exit on failure, only raise an
     exception. Obeys system preference for IPv4/6 address resolution.
-    Tries to connect to the address before considering it useful. If no address
-    can be reached, the first one resolved is used as a fallback.
+    Tries to connect to the address before considering it useful.
     '''
     error = False
     lookup = addr
@@ -776,22 +771,18 @@ def dns_check(addr, port, safe=False, ipv6=None):
             error = True
         else:
             resolved = False
-            candidates = []
             for h in hostnames:
-                # It's an IP address, just return it
-                if h[4][0] == addr:
-                    resolved = addr
-                    break
-
                 if h[0] == socket.AF_INET and ipv6 is True:
                     continue
                 if h[0] == socket.AF_INET6 and ipv6 is False:
                     continue
+                if h[0] == socket.AF_INET6 and connect is False and ipv6 is None:
+                    continue
 
                 candidate_addr = ip_bracket(h[4][0])
 
-                if h[0] != socket.AF_INET6 or ipv6 is not None:
-                    candidates.append(candidate_addr)
+                if not connect:
+                    resolved = candidate_addr
 
                 s = socket.socket(h[0], socket.SOCK_STREAM)
                 try:
@@ -803,10 +794,7 @@ def dns_check(addr, port, safe=False, ipv6=None):
                 except socket.error:
                     pass
             if not resolved:
-                if len(candidates) > 0:
-                    resolved = candidates[0]
-                else:
-                    error = True
+                error = True
     except TypeError:
         err = ('Attempt to resolve address \'{0}\' failed. Invalid or unresolveable address').format(lookup)
         raise SaltSystemExit(code=42, msg=err)

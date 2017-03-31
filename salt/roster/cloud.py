@@ -20,7 +20,6 @@ usually located at /etc/salt/cloud. For example, add the following:
 
 # Import python libs
 from __future__ import absolute_import
-import os
 
 # Import Salt libs
 import salt.loader
@@ -38,15 +37,13 @@ def targets(tgt, tgt_type='glob', **kwargs):  # pylint: disable=W0613
     '''
     ret = {}
 
-    cloud_opts = salt.config.cloud_config(
-        os.path.join(os.path.dirname(__opts__['conf_file']), 'cloud')
-    )
+    cloud_opts = salt.config.cloud_config('/etc/salt/cloud')
 
     minions = __runner__['cache.cloud'](tgt)
     for minion_id, full_info in minions.items():
         profile, provider = full_info.get('profile', None), full_info.get('provider', None)
         vm_ = {
-            'driver': provider,
+            'provider': provider,
             'profile': profile,
         }
         public_ips = full_info.get('public_ips', [])
@@ -66,7 +63,7 @@ def targets(tgt, tgt_type='glob', **kwargs):  # pylint: disable=W0613
         ret[minion_id] = __opts__.get('roster_defaults', {})
         ret[minion_id].update({'host': preferred_ip})
 
-        ssh_username = salt.utils.cloud.ssh_usernames(vm_, cloud_opts)
+        ssh_username = salt.utils.cloud.ssh_usernames({}, cloud_opts)
         if isinstance(ssh_username, string_types):
             ret[minion_id]['user'] = ssh_username
         elif isinstance(ssh_username, list):

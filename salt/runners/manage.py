@@ -34,7 +34,7 @@ FINGERPRINT_REGEX = re.compile(r'^([a-f0-9]{2}:){15}([a-f0-9]{2})$')
 log = logging.getLogger(__name__)
 
 
-def _ping(tgt, tgt_type, timeout, gather_job_timeout):
+def _ping(tgt, tgt_type, timeout):
     client = salt.client.get_local_client(__opts__['conf_file'])
     pub_data = client.run_job(tgt, 'test.ping', (), tgt_type, '', timeout, '')
 
@@ -47,8 +47,7 @@ def _ping(tgt, tgt_type, timeout, gather_job_timeout):
             pub_data['minions'],
             client._get_timeout(timeout),
             tgt,
-            tgt_type,
-            gather_job_timeout=gather_job_timeout):
+            tgt_type):
 
         if fn_ret:
             for mid, _ in six.iteritems(fn_ret):
@@ -59,7 +58,7 @@ def _ping(tgt, tgt_type, timeout, gather_job_timeout):
     return list(returned), list(not_returned)
 
 
-def status(output=True, tgt='*', tgt_type='glob', expr_form=None, timeout=None, gather_job_timeout=None):
+def status(output=True, tgt='*', tgt_type='glob', expr_form=None):
     '''
     .. versionchanged:: Nitrogen
         The ``expr_form`` argument has been renamed to ``tgt_type``, earlier
@@ -73,7 +72,6 @@ def status(output=True, tgt='*', tgt_type='glob', expr_form=None, timeout=None, 
 
         salt-run manage.status
         salt-run manage.status tgt="webservers" tgt_type="nodegroup"
-        salt-run manage.status timeout=5 gather_job_timeout=10
     '''
     # remember to remove the expr_form argument from this function when
     # performing the cleanup on this deprecation.
@@ -87,13 +85,7 @@ def status(output=True, tgt='*', tgt_type='glob', expr_form=None, timeout=None, 
         tgt_type = expr_form
 
     ret = {}
-
-    if not timeout:
-        timeout = __opts__['timeout']
-    if not gather_job_timeout:
-        gather_job_timeout = __opts__['gather_job_timeout']
-
-    ret['up'], ret['down'] = _ping(tgt, tgt_type, timeout, gather_job_timeout)
+    ret['up'], ret['down'] = _ping(tgt, tgt_type, __opts__['timeout'])
     return ret
 
 
@@ -175,7 +167,7 @@ def down(removekeys=False, tgt='*', tgt_type='glob', expr_form=None):
     return ret
 
 
-def up(tgt='*', tgt_type='glob', expr_form=None, timeout=None, gather_job_timeout=None):  # pylint: disable=C0103
+def up(tgt='*', tgt_type='glob', expr_form=None):  # pylint: disable=C0103
     '''
     .. versionchanged:: Nitrogen
         The ``expr_form`` argument has been renamed to ``tgt_type``, earlier
@@ -189,15 +181,8 @@ def up(tgt='*', tgt_type='glob', expr_form=None, timeout=None, gather_job_timeou
 
         salt-run manage.up
         salt-run manage.up tgt="webservers" tgt_type="nodegroup"
-        salt-run manage.up timeout=5 gather_job_timeout=10
     '''
-    ret = status(
-        output=False,
-        tgt=tgt,
-        tgt_type=tgt_type,
-        timeout=timeout,
-        gather_job_timeout=gather_job_timeout
-    ).get('up', [])
+    ret = status(output=False, tgt=tgt, tgt_type=tgt_type).get('up', [])
     return ret
 
 

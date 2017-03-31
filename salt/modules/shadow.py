@@ -27,6 +27,9 @@ try:
 except ImportError:
     HAS_CRYPT = False
 
+# Import 3rd-party libs
+import salt.ext.six as six
+
 
 def __virtual__():
     return __grains__.get('kernel', '') == 'Linux'
@@ -290,7 +293,8 @@ def set_password(name, password, use_usermod=False):
         lines = []
         with salt.utils.fopen(s_file, 'rb') as fp_:
             for line in fp_:
-                line = salt.utils.to_str(line)
+                if six.PY3:
+                    line = line.decode(__salt_system_encoding__)
                 comps = line.strip().split(':')
                 if comps[0] != name:
                     lines.append(line)

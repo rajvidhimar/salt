@@ -22,7 +22,6 @@ try:
     import msvcrt
     import ctypes
     import winerror
-    import salt.utils.win_functions
     from ctypes import wintypes
     HAS_WIN32 = True
 except ImportError:
@@ -396,7 +395,7 @@ def runas_system(cmd, username, password):
 def runas(cmd, username, password, cwd=None):
     # This only works when not running under the system account
     # Debug mode for example
-    if salt.utils.win_functions.get_current_user() == 'SYSTEM':
+    if win32api.GetUserName() == 'SYSTEM':
         return runas_system(cmd, username, password)
 
     # Create a pipe to set as stdout in the child. The write handle needs to be

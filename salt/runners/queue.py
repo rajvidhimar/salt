@@ -52,8 +52,10 @@ master and it will run the specified amount of commands per time period.
     schedule:
       runner queue:
         schedule:
-          function: queue.process_runner
+          function: saltutil.runner
           minutes: 1
+          args:
+            - queue.process_runner
           kwargs:
             quantity: 2
 

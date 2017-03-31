@@ -4567,8 +4567,6 @@ def manage_file(name,
                 follow_symlinks=True,
                 skip_verify=False,
                 keep_mode=False,
-                encoding=None,
-                encoding_errors='strict',
                 **kwargs):
     '''
     Checks the destination against what was retrieved with get_managed and
@@ -4634,21 +4632,6 @@ def manage_file(name,
         If ``True``, and the ``source`` is a file from the Salt fileserver (or
         a local file on the minion), the mode of the destination file will be
         set to the mode of the source file.
-
-    encoding : None
-        If None, str() will be applied to contents.
-        If not None, specified encoding will be used.
-        See https://docs.python.org/3/library/codecs.html#standard-encodings
-        for the list of available encodings.
-
-        .. versionadded:: Nitrogen
-
-    encoding_errors : 'strict'
-        Default is ```'strict'```.
-        See https://docs.python.org/2/library/codecs.html#codec-base-classes
-        for the error handling schemes.
-
-        .. versionadded:: Nitrogen
 
     CLI Example:
 
@@ -4768,11 +4751,7 @@ def manage_file(name,
             if salt.utils.is_windows():
                 contents = os.linesep.join(contents.splitlines())
             with salt.utils.fopen(tmp, 'w') as tmp_:
-                if encoding:
-                    log.debug('File will be encoded with {0}'.format(encoding))
-                    tmp_.write(contents.encode(encoding=encoding, errors=encoding_errors))
-                else:
-                    tmp_.write(str(contents))
+                tmp_.write(str(contents))
 
             # Compare contents of files to know if we need to replace
             with salt.utils.fopen(tmp, 'r') as src:
@@ -4976,12 +4955,7 @@ def manage_file(name,
             if salt.utils.is_windows():
                 contents = os.linesep.join(contents.splitlines())
             with salt.utils.fopen(tmp, 'w') as tmp_:
-                if encoding:
-                    log.debug('File will be encoded with {0}'.format(encoding))
-                    tmp_.write(contents.encode(encoding=encoding, errors=encoding_errors))
-                else:
-                    tmp_.write(str(contents))
-
+                tmp_.write(str(contents))
             # Copy into place
             salt.utils.files.copyfile(tmp,
                                 name,
@@ -5831,7 +5805,7 @@ def pardir():
 
     This can be useful when constructing Salt Formulas.
 
-    .. code-block:: jinja
+    .. code-block:: yaml
 
         {% set pardir = salt['file.pardir']() %}
         {% set final_path = salt['file.join']('subdir', pardir, 'confdir') %}
@@ -5853,7 +5827,7 @@ def normpath(path):
 
     This can be useful at the CLI but is frequently useful when scripting.
 
-    .. code-block:: jinja
+    .. code-block:: yaml
 
         {%- from salt['file.normpath'](tpldir + '/../vars.jinja') import parent_vars %}
 
@@ -5874,7 +5848,7 @@ def basename(path):
 
     This can be useful at the CLI but is frequently useful when scripting.
 
-    .. code-block:: jinja
+    .. code-block:: yaml
 
         {%- set filename = salt['file.basename'](source_file) %}
 
@@ -5895,7 +5869,7 @@ def dirname(path):
 
     This can be useful at the CLI but is frequently useful when scripting.
 
-    .. code-block:: jinja
+    .. code-block:: yaml
 
         {%- from salt['file.dirname'](tpldir) + '/vars.jinja' import parent_vars %}
 
@@ -5917,7 +5891,7 @@ def join(*args):
     This can be useful at the CLI but is frequently useful when scripting
     combining path variables:
 
-    .. code-block:: jinja
+    .. code-block:: yaml
 
         {% set www_root = '/var' %}
         {% set app_dir = 'myapp' %}

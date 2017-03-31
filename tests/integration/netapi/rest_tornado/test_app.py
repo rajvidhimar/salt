@@ -8,13 +8,11 @@ import time
 import threading
 
 # Import Salt Libs
-import salt.utils
 from salt.netapi.rest_tornado import saltnado
 from salt.utils.versions import StrictVersion
 
 # Import Salt Testing Libs
 from tests.unit.netapi.rest_tornado.test_handlers import SaltnadoTestCase
-from tests.support.helpers import flaky
 from tests.support.unit import skipIf
 
 # Import 3rd-party libs
@@ -289,7 +287,6 @@ class TestSaltAPIHandler(SaltnadoTestCase):
         self.assertIn('tag', response_obj['return'][0])
 
 
-@flaky
 @skipIf(HAS_ZMQ_IOLOOP is False, 'PyZMQ version must be >= 14.0.1 to run these tests.')
 class TestMinionSaltAPIHandler(SaltnadoTestCase):
     def get_app(self):
@@ -529,7 +526,6 @@ class TestWebhookSaltAPIHandler(SaltnadoTestCase):
         application.event_listener = saltnado.EventListener({}, self.opts)
         return application
 
-    @skipIf(True, 'Skipping until we can devote more resources to debugging this test.')
     def test_post(self):
         self._future_resolved = threading.Event()
         try:
@@ -557,10 +553,7 @@ class TestWebhookSaltAPIHandler(SaltnadoTestCase):
             event = future.result()
             self.assertEqual(event['tag'], 'salt/netapi/hook')
             self.assertIn('headers', event['data'])
-            self.assertEqual(
-                event['data']['post'],
-                {'foo': salt.utils.to_bytes('bar')}
-            )
+            self.assertEqual(event['data']['post'], {'foo': 'bar'})
         finally:
             self._future_resolved.clear()
             del self._future_resolved

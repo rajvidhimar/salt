@@ -206,22 +206,6 @@ def _filedata(infile):
         return f.read()
 
 
-def _resolve_vpcconfig(conf, region=None, key=None, keyid=None, profile=None):
-    if isinstance(conf, six.string_types):
-        conf = json.loads(conf)
-    if not conf:
-        return None
-    if not isinstance(conf, dict):
-        raise SaltInvocationError('VpcConfig must be a dict.')
-    sns = [__salt__['boto_vpc.get_resource_id']('subnet', s, region=region, key=key,
-            keyid=keyid, profile=profile).get('id') for s in conf.pop('SubnetNames', [])]
-    sgs = [__salt__['boto_secgroup.get_group_id'](s, region=region, key=key, keyid=keyid,
-            profile=profile) for s in conf.pop('SecurityGroupNames', [])]
-    conf.setdefault('SubnetIds', []).extend(sns)
-    conf.setdefault('SecurityGroupIds', []).extend(sgs)
-    return conf
-
-
 def create_function(FunctionName, Runtime, Role, Handler, ZipFile=None,
                     S3Bucket=None, S3Key=None, S3ObjectVersion=None,
                     Description="", Timeout=3, MemorySize=128, Publish=False,
@@ -276,7 +260,7 @@ def create_function(FunctionName, Runtime, Role, Handler, ZipFile=None,
                 code['S3ObjectVersion'] = S3ObjectVersion
         kwargs = {}
         if VpcConfig is not None:
-            kwargs['VpcConfig'] = _resolve_vpcconfig(VpcConfig, region=region, key=key, keyid=keyid, profile=profile)
+            kwargs['VpcConfig'] = VpcConfig
         if Environment is not None:
             kwargs['Environment'] = Environment
         if WaitForRole:
@@ -406,15 +390,14 @@ def update_function_config(FunctionName, Role=None, Handler=None,
                'VpcConfig': VpcConfig,
                'Environment': Environment}
 
-    conn = _get_conn(region=region, key=key, keyid=keyid, profile=profile)
     for val, var in six.iteritems(options):
         if var:
             args[val] = var
     if Role:
-        args['Role'] = _get_role_arn(Role, region, key, keyid, profile)
-    if VpcConfig:
-        args['VpcConfig'] = _resolve_vpcconfig(VpcConfig, region=region, key=key, keyid=keyid, profile=profile)
+        role_arn = _get_role_arn(Role, region, key, keyid, profile)
+        args['Role'] = role_arn
     try:
+        conn = _get_conn(region=region, key=key, keyid=keyid, profile=profile)
         if WaitForRole:
             retrycount = RoleRetries
         else:

@@ -6,7 +6,6 @@ from __future__ import absolute_import
 
 # Import python libs
 import contextlib
-import errno
 import logging
 import os
 import string
@@ -143,19 +142,12 @@ class Client(object):
                                     path)
         destdir = os.path.dirname(dest)
         cumask = os.umask(63)
-
-        # remove destdir if it is a regular file to avoid an OSError when
-        # running os.makedirs below
-        if os.path.isfile(destdir):
-            os.remove(destdir)
-
-        # ensure destdir exists
-        try:
+        if not os.path.isdir(destdir):
+            # remove destdir if it is a regular file to avoid an OSError when
+            # running os.makedirs below
+            if os.path.isfile(destdir):
+                os.remove(destdir)
             os.makedirs(destdir)
-        except OSError as exc:
-            if exc.errno != errno.EEXIST:  # ignore if it was there already
-                raise
-
         yield dest
         os.umask(cumask)
 

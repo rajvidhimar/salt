@@ -31,10 +31,7 @@ log = logging.getLogger(__name__)
 # TODO: rename
 class AESPubClientMixin(object):
     def _verify_master_signature(self, payload):
-        if self.opts.get('sign_pub_messages'):
-            if not payload.get('sig', False):
-                raise salt.crypt.AuthenticationError('Message signing is enabled but the payload has no signature.')
-
+        if payload.get('sig') and self.opts.get('sign_pub_messages'):
             # Verify that the signature is valid
             master_pubkey_path = os.path.join(self.opts['pki_dir'], 'minion_master.pub')
             if not salt.crypt.verify_signature(master_pubkey_path, payload['load'], payload.get('sig')):

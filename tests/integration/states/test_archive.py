@@ -9,7 +9,6 @@ import logging
 import os
 import socket
 import threading
-import tornado.httpserver
 import tornado.ioloop
 import tornado.web
 

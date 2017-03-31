@@ -93,7 +93,7 @@ variable in a Salt state.
 
    MYENVVAR="world" salt-call state.template test.sls
 
-.. code-block:: jinja
+.. code-block:: yaml
 
    Create a file with contents from an environment variable:
      file.managed:
@@ -102,7 +102,7 @@ variable in a Salt state.
 
 Error checking:
 
-.. code-block:: jinja
+.. code-block:: yaml
 
    {% set myenvvar = salt['environ.get']('MYENVVAR') %}
    {% if myenvvar %}

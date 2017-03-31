@@ -496,10 +496,7 @@ def get_computer_desc():
     desc = None
     hostname_cmd = salt.utils.which('hostnamectl')
     if hostname_cmd:
-        desc = __salt__['cmd.run'](
-            [hostname_cmd, 'status', '--pretty'],
-            python_shell=False
-        )
+        desc = __salt__['cmd.run']('{0} status --pretty'.format(hostname_cmd))
     else:
         pattern = re.compile(r'^\s*PRETTY_HOSTNAME=(.*)$')
         try:
@@ -513,7 +510,7 @@ def get_computer_desc():
         except IOError:
             return False
     if six.PY3:
-        desc = desc.replace('\\"', '"')
+        desc = desc.replace('\\"', '"').decode('unicode_escape')
     else:
         desc = desc.replace('\\"', '"').decode('string_escape')
     return desc
@@ -535,20 +532,17 @@ def set_computer_desc(desc):
         salt '*' system.set_computer_desc "Michael's laptop"
     '''
     if six.PY3:
-        desc = desc.replace('"', '\\"')
+        desc = desc.encode('unicode_escape').replace('"', '\\"')
     else:
         desc = desc.encode('string_escape').replace('"', '\\"')
     hostname_cmd = salt.utils.which('hostnamectl')
     if hostname_cmd:
-        result = __salt__['cmd.retcode'](
-            [hostname_cmd, 'set-hostname', '--pretty', desc],
-            python_shell=False
-        )
+        result = __salt__['cmd.retcode']('{0} set-hostname --pretty "{1}"'.format(hostname_cmd, desc))
         return True if result == 0 else False
 
     if not os.path.isfile('/etc/machine-info'):
-        with salt.utils.fopen('/etc/machine-info', 'w'):
-            pass
+        f = salt.utils.fopen('/etc/machine-info', 'a')
+        f.close()
 
     is_pretty_hostname_found = False
     pattern = re.compile(r'^\s*PRETTY_HOSTNAME=(.*)$')

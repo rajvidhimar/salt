@@ -1983,24 +1983,15 @@ def start(name, call=None):
     return 'powered on'
 
 
-def stop(name, soft=False, call=None):
+def stop(name, call=None):
     '''
     To stop/power off a VM using its name
-
-    .. note::
-
-        If ``soft=True`` then issues a command to the guest operating system
-        asking it to perform a clean shutdown of all services.
-        Default is soft=False
-
-        For ``soft=True`` vmtools should be installed on guest system.
 
     CLI Example:
 
     .. code-block:: bash
 
         salt-cloud -a stop vmname
-        salt-cloud -a stop vmname soft=True
     '''
     if call != 'action':
         raise SaltCloudSystemExit(
@@ -2023,11 +2014,8 @@ def stop(name, soft=False, call=None):
                 return ret
             try:
                 log.info('Stopping VM {0}'.format(name))
-                if soft:
-                    vm["object"].ShutdownGuest()
-                else:
-                    task = vm["object"].PowerOff()
-                    salt.utils.vmware.wait_for_task(task, name, 'power off')
+                task = vm["object"].PowerOff()
+                salt.utils.vmware.wait_for_task(task, name, 'power off')
             except Exception as exc:
                 log.error(
                     'Error while powering off VM {0}: {1}'.format(
@@ -2093,24 +2081,15 @@ def suspend(name, call=None):
     return 'suspended'
 
 
-def reset(name, soft=False, call=None):
+def reset(name, call=None):
     '''
     To reset a VM using its name
-
-    .. note::
-
-        If ``soft=True`` then issues a command to the guest operating system
-        asking it to perform a reboot. Otherwise hypervisor will terminate VM and start it again.
-        Default is soft=False
-
-        For ``soft=True`` vmtools should be installed on guest system.
 
     CLI Example:
 
     .. code-block:: bash
 
         salt-cloud -a reset vmname
-        salt-cloud -a reset vmname soft=True
     '''
     if call != 'action':
         raise SaltCloudSystemExit(
@@ -2133,11 +2112,8 @@ def reset(name, soft=False, call=None):
                 return ret
             try:
                 log.info('Resetting VM {0}'.format(name))
-                if soft:
-                    vm["object"].RebootGuest()
-                else:
-                    task = vm["object"].ResetVM_Task()
-                    salt.utils.vmware.wait_for_task(task, name, 'reset')
+                task = vm["object"].ResetVM_Task()
+                salt.utils.vmware.wait_for_task(task, name, 'reset')
             except Exception as exc:
                 log.error(
                     'Error while resetting VM {0}: {1}'.format(

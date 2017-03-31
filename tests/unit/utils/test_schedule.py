@@ -44,25 +44,25 @@ class ScheduleTestCase(TestCase):
         '''
         Tests ensuring the job exists and deleting it
         '''
-        self.schedule.opts.update({'schedule': {'foo': 'bar'}, 'pillar': {}})
+        self.schedule.opts.update({'schedule': {'foo': 'bar'}, 'pillar': ''})
         self.assertIn('foo', self.schedule.opts['schedule'])
         self.schedule.delete_job('foo')
         self.assertNotIn('foo', self.schedule.opts['schedule'])
 
     def test_delete_job_in_pillar(self):
         '''
-        Tests ignoring deletion job from pillar
+        Tests deleting job in pillar
         '''
-        self.schedule.opts.update({'pillar': {'schedule': {'foo': 'bar'}}, 'schedule': {}})
+        self.schedule.opts.update({'pillar': {'schedule': {'foo': 'bar'}}, 'schedule': ''})
         self.assertIn('foo', self.schedule.opts['pillar']['schedule'])
-        self.schedule.delete_job('foo')
-        self.assertIn('foo', self.schedule.opts['pillar']['schedule'])
+        self.schedule.delete_job('foo', where='pillar')
+        self.assertNotIn('foo', self.schedule.opts['pillar']['schedule'])
 
     def test_delete_job_intervals(self):
         '''
         Tests removing job from intervals
         '''
-        self.schedule.opts.update({'pillar': {}, 'schedule': {}})
+        self.schedule.opts.update({'pillar': '', 'schedule': ''})
         self.schedule.intervals = {'foo': 'bar'}
         self.schedule.delete_job('foo')
         self.assertNotIn('foo', self.schedule.intervals)
@@ -72,7 +72,7 @@ class ScheduleTestCase(TestCase):
         Tests ensuring jobs exists and deleting them by prefix
         '''
         self.schedule.opts.update({'schedule': {'foobar': 'bar', 'foobaz': 'baz', 'fooboo': 'boo'},
-                                   'pillar': {}})
+                                   'pillar': ''})
         ret = copy.deepcopy(self.schedule.opts)
         del ret['schedule']['foobar']
         del ret['schedule']['foobaz']
@@ -81,12 +81,14 @@ class ScheduleTestCase(TestCase):
 
     def test_delete_job_prefix_in_pillar(self):
         '''
-        Tests ignoring deletion jobs by prefix from pillar
+        Tests deleting jobs by prefix in pillar
         '''
         self.schedule.opts.update({'pillar': {'schedule': {'foobar': 'bar', 'foobaz': 'baz', 'fooboo': 'boo'}},
-                                   'schedule': {}})
+                                   'schedule': ''})
         ret = copy.deepcopy(self.schedule.opts)
-        self.schedule.delete_job_prefix('fooba')
+        del ret['pillar']['schedule']['foobar']
+        del ret['pillar']['schedule']['foobaz']
+        self.schedule.delete_job_prefix('fooba', where='pillar')
         self.assertEqual(self.schedule.opts, ret)
 
     # add_job tests
@@ -112,10 +114,8 @@ class ScheduleTestCase(TestCase):
         data = {'foo': {'bar': 'baz'}}
         ret = copy.deepcopy(self.schedule.opts)
         ret.update({'schedule': {'foo': {'bar': 'baz', 'enabled': True},
-                                 'hello': {'world': 'peace', 'enabled': True}},
-                    'pillar': {}})
-        self.schedule.opts.update({'schedule': {'hello': {'world': 'peace', 'enabled': True}},
-                                   'pillar': {}})
+                                 'hello': {'world': 'peace', 'enabled': True}}})
+        self.schedule.opts.update({'schedule': {'hello': {'world': 'peace', 'enabled': True}}})
         Schedule.add_job(self.schedule, data)
         self.assertEqual(self.schedule.opts, ret)
 
@@ -131,11 +131,11 @@ class ScheduleTestCase(TestCase):
 
     def test_enable_job_pillar(self):
         '''
-        Tests ignoring enable a job from pillar
+        Tests enabling a job in pillar
         '''
-        self.schedule.opts.update({'pillar': {'schedule': {'name': {'enabled': False}}}})
-        Schedule.enable_job(self.schedule, 'name', persist=False)
-        self.assertFalse(self.schedule.opts['pillar']['schedule']['name']['enabled'])
+        self.schedule.opts.update({'pillar': {'schedule': {'name': {'enabled': 'foo'}}}})
+        Schedule.enable_job(self.schedule, 'name', persist=False, where='pillar')
+        self.assertTrue(self.schedule.opts['pillar']['schedule']['name']['enabled'])
 
     # disable_job tests
 
@@ -143,17 +143,17 @@ class ScheduleTestCase(TestCase):
         '''
         Tests disabling a job
         '''
-        self.schedule.opts.update({'schedule': {'name': {'enabled': 'foo'}}, 'pillar': {}})
+        self.schedule.opts.update({'schedule': {'name': {'enabled': 'foo'}}})
         Schedule.disable_job(self.schedule, 'name')
         self.assertFalse(self.schedule.opts['schedule']['name']['enabled'])
 
     def test_disable_job_pillar(self):
         '''
-        Tests ignoring disable a job in pillar
+        Tests disabling a job in pillar
         '''
-        self.schedule.opts.update({'pillar': {'schedule': {'name': {'enabled': True}}}, 'schedule': {}})
-        Schedule.disable_job(self.schedule, 'name', persist=False)
-        self.assertTrue(self.schedule.opts['pillar']['schedule']['name']['enabled'])
+        self.schedule.opts.update({'pillar': {'schedule': {'name': {'enabled': 'foo'}}}})
+        Schedule.disable_job(self.schedule, 'name', persist=False, where='pillar')
+        self.assertFalse(self.schedule.opts['pillar']['schedule']['name']['enabled'])
 
     # modify_job tests
 
@@ -161,32 +161,22 @@ class ScheduleTestCase(TestCase):
         '''
         Tests modifying a job in the scheduler
         '''
-        schedule = {'foo': 'bar'}
-        self.schedule.opts.update({'schedule': {'name': 'baz'}, 'pillar': {}})
+        schedule = {'schedule': {'foo': 'bar'}}
         ret = copy.deepcopy(self.schedule.opts)
-        ret.update({'schedule': {'name': {'foo': 'bar'}}})
-        Schedule.modify_job(self.schedule, 'name', schedule)
-        self.assertEqual(self.schedule.opts, ret)
-
-    def test_modify_job_not_exists(self):
-        '''
-        Tests modifying a job in the scheduler if jobs not exists
-        '''
-        schedule = {'foo': 'bar'}
-        self.schedule.opts.update({'schedule': {}, 'pillar': {}})
-        ret = copy.deepcopy(self.schedule.opts)
-        ret.update({'schedule': {'name':  {'foo': 'bar'}}})
+        ret.update({'schedule': {'foo': 'bar', 'name': {'schedule': {'foo': 'bar'}}}})
+        self.schedule.opts.update({'schedule': {'foo': 'bar'}})
         Schedule.modify_job(self.schedule, 'name', schedule)
         self.assertEqual(self.schedule.opts, ret)
 
     def test_modify_job_pillar(self):
         '''
-        Tests ignoring modification of job from pillar
+        Tests modifying a job in the scheduler in pillar
         '''
         schedule = {'foo': 'bar'}
-        self.schedule.opts.update({'schedule': {}, 'pillar': {'schedule': {'name': 'baz'}}})
         ret = copy.deepcopy(self.schedule.opts)
-        Schedule.modify_job(self.schedule, 'name', schedule, persist=False)
+        ret.update({'pillar': {'schedule': {'name': {'foo': 'bar'}}}})
+        self.schedule.opts.update({'pillar': {'schedule': {'name': {'foo': 'bar'}}}})
+        Schedule.modify_job(self.schedule, 'name', schedule, persist=False, where='pillar')
         self.assertEqual(self.schedule.opts, ret)
 
     maxDiff = None
@@ -197,7 +187,7 @@ class ScheduleTestCase(TestCase):
         '''
         Tests enabling the scheduler
         '''
-        self.schedule.opts.update({'schedule': {'enabled': 'foo'}, 'pillar': {}})
+        self.schedule.opts.update({'schedule': {'enabled': 'foo'}})
         Schedule.enable_schedule(self.schedule)
         self.assertTrue(self.schedule.opts['schedule']['enabled'])
 
@@ -207,7 +197,7 @@ class ScheduleTestCase(TestCase):
         '''
         Tests disabling the scheduler
         '''
-        self.schedule.opts.update({'schedule': {'enabled': 'foo'}, 'pillar': {}})
+        self.schedule.opts.update({'schedule': {'enabled': 'foo'}})
         Schedule.disable_schedule(self.schedule)
         self.assertFalse(self.schedule.opts['schedule']['enabled'])
 
@@ -265,14 +255,7 @@ class ScheduleTestCase(TestCase):
 
     def test_eval_schedule_is_not_dict(self):
         '''
-        Tests eval if the schedule is not a dictionary
+        Tests if the schedule is a dictionary
         '''
-        self.schedule.opts.update({'schedule': '', 'pillar': {'schedule': {}}})
-        self.assertRaises(ValueError, Schedule.eval, self.schedule)
-
-    def test_eval_schedule_is_not_dict_in_pillar(self):
-        '''
-        Tests eval if the schedule from pillar is not a dictionary
-        '''
-        self.schedule.opts.update({'schedule': {}, 'pillar': {'schedule': ''}})
+        self.schedule.opts.update({'schedule': ''})
         self.assertRaises(ValueError, Schedule.eval, self.schedule)

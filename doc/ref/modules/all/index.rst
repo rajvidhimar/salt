@@ -201,7 +201,6 @@ execution modules
     localemod
     locate
     logadm
-    logmod
     logrotate
     lvs
     lxc

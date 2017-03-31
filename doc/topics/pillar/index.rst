@@ -90,7 +90,7 @@ by their ``os`` grain:
 
 ``/srv/pillar/packages.sls``
 
-.. code-block:: jinja
+.. code-block:: yaml
 
     {% if grains['os'] == 'RedHat' %}
     apache: httpd
@@ -116,13 +116,13 @@ of ``Foo Industries``.
 Consequently this data can be used from within modules, renderers, State SLS
 files, and more via the shared pillar :ref:`dict <python2:typesmapping>`:
 
-.. code-block:: jinja
+.. code-block:: yaml
 
     apache:
       pkg.installed:
         - name: {{ pillar['apache'] }}
 
-.. code-block:: jinja
+.. code-block:: yaml
 
     git:
       pkg.installed:
@@ -155,7 +155,7 @@ And the actual pillar file at '/srv/pillar/common_pillar.sls':
     environment has its own top file, the jinja placeholder ``{{ saltenv }}``
     can be used in place of the environment name:
 
-    .. code-block:: jinja
+    .. code-block:: yaml
 
         {{ saltenv }}:
           '*':

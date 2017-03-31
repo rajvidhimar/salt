@@ -367,7 +367,7 @@ for the Grains to be accessed from within the template. A few examples:
 
 ``apache/init.sls:``
 
-.. code-block:: jinja
+.. code-block:: yaml
 
     apache:
       pkg.installed:
@@ -411,7 +411,7 @@ a MooseFS distributed filesystem chunkserver:
 
 ``moosefs/chunk.sls:``
 
-.. code-block:: jinja
+.. code-block:: yaml
 
     include:
       - moosefs

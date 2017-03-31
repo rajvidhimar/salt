@@ -14,7 +14,7 @@ import os
 import salt.version
 import salt.utils
 
-from salt.exceptions import CommandExecutionError, CommandNotFoundError
+from salt.exceptions import CommandNotFoundError
 
 from salt.ext import six
 log = logging.getLogger(__name__)
@@ -185,7 +185,7 @@ def managed(name,
 
     if not venv_exists or (venv_exists and clear):
         try:
-            venv_ret = __salt__['virtualenv.create'](
+            _ret = __salt__['virtualenv.create'](
                 name,
                 venv_bin=venv_bin,
                 system_site_packages=system_site_packages,
@@ -203,9 +203,9 @@ def managed(name,
             ret['comment'] = 'Failed to create virtualenv: {0}'.format(err)
             return ret
 
-        if venv_ret['retcode'] != 0:
+        if _ret['retcode'] != 0:
             ret['result'] = False
-            ret['comment'] = venv_ret['stdout'] + venv_ret['stderr']
+            ret['comment'] = _ret['stdout'] + _ret['stderr']
             return ret
 
         ret['result'] = True
@@ -245,12 +245,7 @@ def managed(name,
 
     # Populate the venv via a requirements file
     if requirements or pip_pkgs:
-        try:
-            before = set(__salt__['pip.freeze'](bin_env=name, user=user, use_vt=use_vt))
-        except CommandExecutionError as exc:
-            ret['result'] = False
-            ret['comment'] = exc.strerror
-            return ret
+        before = set(__salt__['pip.freeze'](bin_env=name, user=user, use_vt=use_vt))
 
         if requirements:
 
@@ -266,7 +261,7 @@ def managed(name,
             if req_canary != os.path.abspath(req_canary):
                 cwd = os.path.dirname(os.path.abspath(req_canary))
 
-        pip_ret = __salt__['pip.install'](
+        _ret = __salt__['pip.install'](
             pkgs=pip_pkgs,
             requirements=requirements,
             process_dependency_links=process_dependency_links,
@@ -289,11 +284,11 @@ def managed(name,
             use_vt=use_vt,
             env_vars=env_vars
         )
-        ret['result'] &= pip_ret['retcode'] == 0
-        if pip_ret['retcode'] > 0:
+        ret['result'] &= _ret['retcode'] == 0
+        if _ret['retcode'] > 0:
             ret['comment'] = '{0}\n{1}\n{2}'.format(ret['comment'],
-                                                    pip_ret['stdout'],
-                                                    pip_ret['stderr'])
+                                                    _ret['stdout'],
+                                                    _ret['stderr'])
 
         after = set(__salt__['pip.freeze'](bin_env=name))
 

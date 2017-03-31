@@ -216,55 +216,39 @@ Using Salt Virt
 ===============
 
 With hypervisors set up and virtual machine images ready, Salt can start
-issuing cloud commands using the `virt runner`.
+issuing cloud commands.
 
 Start by running a Salt Virt hypervisor info command:
 
 .. code-block:: bash
 
-    salt-run virt.host_info
+    salt-run virt.hyper_info
 
-This will query the running hypervisor(s) for stats and display useful
-information such as the number of cpus and amount of memory.
+This will query what the running hypervisor stats are and display information
+for all configured hypervisors. This command will also validate that the
+hypervisors are properly configured.
 
-You can also list all VMs and their current states on all hypervisor
-nodes:
-
-.. code-block:: bash
-
-    salt-run virt.list
-
-Now that hypervisors are available a virtual machine can be provisioned.
-The ``virt.init`` routine will create a new virtual machine:
+Now that hypervisors are available a virtual machine can be provisioned. The
+``virt.init`` routine will create a new virtual machine:
 
 .. code-block:: bash
 
     salt-run virt.init centos1 2 512 salt://centos.img
 
-The Salt Virt runner will now automatically select a hypervisor to deploy
-the new virtual machine on. Using ``salt://`` assumes that the CentOS virtual
-machine image is located in the root of the :ref:`file-server` on the master.
-When images are cloned (i.e. copied locatlly after retrieval from the file server)
-the destination directory on the hypervisor minion is determined by the ``virt.images``
-config option; by default this is ``/srv/salt/salt-images/``.
+This command assumes that the CentOS virtual machine image is sitting in the
+root of the Salt fileserver. Salt Virt will now select a hypervisor to deploy
+the new virtual machine on and copy the virtual machine image down to the
+hypervisor.
 
-When a VM is initialized using ``virt.init`` the image is copied to the hypervisor
-using ``cp.cache_file`` and will be mounted and seeded with a minion. Seeding includes
-setting pre-authenticated keys on the new machine. A minion will only be installed if
-one can not be found on the image using the default arguments to ``seed.apply``.
+Once the VM image has been copied down the new virtual machine will be seeded.
+Seeding the VMs involves setting pre-authenticated Salt keys on the new VM and
+if needed, will install the Salt Minion on the new VM before it is started.
 
 .. note::
 
     The biggest bottleneck in starting VMs is when the Salt Minion needs to be
     installed. Making sure that the source VM images already have Salt
     installed will GREATLY speed up virtual machine deployment.
-
-You can also deploy an image on a particular minion by directly calling the
-`virt` execution module with an absolute image path. This can be quite handy for testing:
-
-.. code-block:: bash
-
-    salt 'hypervisor*' virt.init centos1 2 512 image=/var/lib/libvirt/images/centos.img
 
 Now that the new VM has been prepared, it can be seen via the ``virt.query``
 command:
@@ -301,12 +285,11 @@ opened on hypervisors:
 
     :ref:`Opening the Firewall up for Salt <firewall>`
 
-Salt also needs the ``virt.tunnel`` option to be turned on.
-This flag tells Salt to run migrations securely via the libvirt TLS tunnel and to
-use port 16514. Without ``virt.tunnel`` libvirt tries to bind to random ports when
-running migrations.
-
-To turn on ``virt.tunnel`` simple apply it to the master config file:
+Salt also needs an additional flag to be turned on as well. The ``virt.tunnel``
+option needs to be turned on. This flag tells Salt to run migrations securely
+via the libvirt TLS tunnel and to use port 16514. Without ``virt.tunnel`` libvirt
+tries to bind to random ports when running migrations. To turn on ``virt.tunnel``
+simple apply it to the master config file:
 
 .. code-block:: yaml
 
@@ -329,11 +312,9 @@ migrate routine:
 VNC Consoles
 ============
 
-Although not enabled by default, Salt Virt can also set up VNC consoles allowing for remote visual
-consoles to be opened up. When creating a new VM using ``virt.init`` pass the ``enable_vnc=True``
-parameter to have a console configured for the new VM.
-
-The information from a ``virt.query`` routine will display the vnc console port for the specific vms:
+Salt Virt also sets up VNC consoles by default, allowing for remote visual
+consoles to be oped up. The information from a ``virt.query`` routine will
+display the vnc console port for the specific vms:
 
 .. code-block:: yaml
 

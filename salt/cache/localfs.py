@@ -138,10 +138,7 @@ def list_(bank, cachedir):
         )
     ret = []
     for item in items:
-        if item.endswith('.p'):
-            ret.append(item.rstrip(item[-2:]))
-        else:
-            ret.append(item)
+        ret.append(item.rstrip('.p'))
     return ret
 
 
