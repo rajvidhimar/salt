@@ -5,24 +5,19 @@ from __future__ import print_function
 
 __author__ = "Rajvi Dhimar"
 
+import unittest
 from tests.support.mock import patch, mock_open
-from tests.support.unit import skipIf, TestCase
 try:
     from lxml import etree
 except ImportError:
     from salt._compat import ElementTree as etree
 
-try:
-    from jnpr.junos.utils.config import Config
-    from jnpr.junos.utils.sw import SW
-    from jnpr.junos.device import Device
-    HAS_JUNOS = True
-except ImportError:
-    HAS_JUNOS = False
+from jnpr.junos.utils.config import Config
+from jnpr.junos.utils.sw import SW
+from jnpr.junos.device import Device
 import salt.modules.junos as junos
 
-@skipIf(not HAS_JUNOS, 'Missing dependencies')
-class Test_Junos_Module(TestCase):
+class Test_Junos_Module(unittest.TestCase):
 
     def setUp(self):
         junos.__proxy__ = {
