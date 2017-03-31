@@ -3820,7 +3820,9 @@ def _checkAllAdmxPolicies(policy_class,
     if policy_vals and return_full_policy_names and not hierarchical_return:
         unpathed_dict = {}
         pathed_dict = {}
-        for policy_item in policy_vals:
+        # keys needs to be called here b/c we are changing the policy_vals
+        # dict during the for loop
+        for policy_item in policy_vals.keys():  # pylint: disable=C0201
             if full_names[policy_item] in policy_vals:
                 # add this item with the path'd full name
                 full_path_list = hierarchy[policy_item]
@@ -4600,7 +4602,7 @@ def _lookup_admin_template(policy_name,
             if len(adml_search_results) > 1:
                 multiple_adml_entries = True
                 for adml_search_result in adml_search_results:
-                    if not adml_search_result.attrib['text'].strip() == policy_name:
+                    if not getattr(adml_search_result, 'text', '').strip() == policy_name:
                         adml_search_results.remove(adml_search_result)
             for adml_search_result in adml_search_results:
                 dmsg = 'found an ADML entry matching the string! {0} -- {1}'

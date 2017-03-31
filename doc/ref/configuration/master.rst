@@ -510,7 +510,7 @@ are expected to reply from executions.
 .. conf_master:: cache
 
 ``cache``
----------------------
+---------
 
 Default: ``localfs``
 
@@ -1030,6 +1030,35 @@ and usernames may be given:
         - tom
       ldap:
         - gary
+
+.. conf_master:: keep_acl_in_token
+
+``keep_acl_in_token``
+---------------------
+
+Default: ``False``
+
+Set to True to enable keeping the calculated user's auth list in the token
+file. This is disabled by default and the auth list is calculated or requested
+from the eauth driver each time.
+
+.. code-block:: yaml
+
+    keep_acl_in_token: False
+
+.. conf_master:: eauth_acl_module
+
+``eauth_acl_module``
+---------------------
+
+Default: ``''``
+
+Auth subsystem module to use to get authorized access list for a user. By default it's
+the same module used for external authentication.
+
+.. code-block:: yaml
+
+    eauth_acl_module: django
 
 .. conf_master:: file_recv
 

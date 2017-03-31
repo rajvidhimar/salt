@@ -9,6 +9,7 @@ import logging
 import os
 import socket
 import threading
+import tornado.httpserver
 import tornado.ioloop
 import tornado.web
 
@@ -190,6 +191,23 @@ class ArchiveTest(integration.ModuleCase,
         ret = self.run_state('archive.extracted', name=ARCHIVE_DIR,
                              source=self.archive_tar_source,
                              source_hash=ARCHIVE_TAR_HASH)
+        log.debug('ret = %s', ret)
+        if 'Timeout' in ret:
+            self.skipTest('Timeout talking to local tornado server.')
+        self.assertSaltTrueReturn(ret)
+
+        self._check_extracted(UNTAR_FILE)
+
+    def test_archive_extracted_with_cmd_unzip_false(self):
+        '''
+        test archive.extracted using use_cmd_unzip argument as false
+        '''
+
+        ret = self.run_state('archive.extracted', name=ARCHIVE_DIR,
+                             source=self.archive_tar_source,
+                             source_hash=ARCHIVE_TAR_HASH,
+                             use_cmd_unzip=False,
+                             archive_format='tar')
         log.debug('ret = %s', ret)
         if 'Timeout' in ret:
             self.skipTest('Timeout talking to local tornado server.')

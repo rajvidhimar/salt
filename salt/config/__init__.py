@@ -563,6 +563,12 @@ VALID_OPTS = {
     # False in 2016.3.0
     'add_proxymodule_to_opts': bool,
 
+    # In some particular cases, always alive proxies are not beneficial.
+    # This option can be used in those less dynamic environments:
+    # the user can request the connection
+    # always alive, or init-shutdown per command.
+    'proxy_always_alive': bool,
+
     # Poll the connection state with the proxy minion
     # If enabled, this option requires the function `alive`
     # to be implemented in the proxy module
@@ -688,6 +694,13 @@ VALID_OPTS = {
     'fileserver_limit_traversal': bool,
     'fileserver_verify_config': bool,
 
+    # Optionally enables keeping the calculated user's auth list in the token file.
+    'keep_acl_in_token': bool,
+
+    # Auth subsystem module to use to get authorized access list for a user. By default it's the
+    # same module used for external authentication.
+    'eauth_acl_module': str,
+
     # The number of open files a daemon is allowed to have open. Frequently needs to be increased
     # higher than the system default in order to account for the way zeromq consumes file handles.
     'max_open_files': int,
@@ -754,7 +767,7 @@ VALID_OPTS = {
 
     # A compound target definition.
     # See: http://docs.saltstack.com/en/latest/topics/targeting/nodegroups.html
-    'nodegroups': dict,
+    'nodegroups': (dict, list),
 
     # List-only nodegroups for salt-ssh. Each group must be formed as either a
     # comma-separated list, or a YAML list.
@@ -1019,6 +1032,7 @@ DEFAULT_MINION_OPTS = {
     'master_failback': False,
     'master_failback_interval': 0,
     'verify_master_pubkey_sign': False,
+    'sign_pub_messages': False,
     'always_verify_signature': False,
     'master_sign_key_name': 'master_sign',
     'syndic_finger': '',
@@ -1386,6 +1400,8 @@ DEFAULT_MASTER_OPTS = {
     'external_auth': {},
     'token_expire': 43200,
     'token_expire_user_override': False,
+    'keep_acl_in_token': False,
+    'eauth_acl_module': '',
     'extension_modules': os.path.join(salt.syspaths.CACHE_DIR, 'master', 'extmods'),
     'file_recv': False,
     'file_recv_max_size': 100,
@@ -1489,7 +1505,7 @@ DEFAULT_MASTER_OPTS = {
     'tcp_keepalive_idle': 300,
     'tcp_keepalive_cnt': -1,
     'tcp_keepalive_intvl': -1,
-    'sign_pub_messages': False,
+    'sign_pub_messages': True,
     'keysize': 2048,
     'transport': 'zeromq',
     'gather_job_timeout': 10,
@@ -1560,10 +1576,18 @@ DEFAULT_MASTER_OPTS = {
 DEFAULT_PROXY_MINION_OPTS = {
     'conf_file': os.path.join(salt.syspaths.CONFIG_DIR, 'proxy'),
     'log_file': os.path.join(salt.syspaths.LOGS_DIR, 'proxy'),
+    'sign_pub_messages': False,
     'add_proxymodule_to_opts': False,
     'proxy_merge_grains_in_module': True,
-    'append_minionid_config_dirs': ['cachedir', 'pidfile'],
+    'append_minionid_config_dirs': ['cachedir', 'pidfile', 'default_include'],
     'default_include': 'proxy.d/*.conf',
+
+    # By default, proxies will preserve the connection.
+    # If this option is set to False,
+    # the connection with the remote dumb device
+    # is closed after each command request.
+    'proxy_always_alive': True,
+
     'proxy_keep_alive': True,  # by default will try to keep alive the connection
     'proxy_keep_alive_interval': 1  # frequency of the proxy keepalive in minutes
 }
@@ -2051,7 +2075,6 @@ def minion_config(path,
     overrides = load_config(path, env_var, DEFAULT_MINION_OPTS['conf_file'])
     default_include = overrides.get('default_include',
                                     defaults['default_include'])
-
     include = overrides.get('include', [])
 
     overrides.update(include_config(default_include, path, verbose=False,
@@ -3230,12 +3253,15 @@ def apply_minion_config(overrides=None,
         opts['id'] = _append_domain(opts)
 
     for directory in opts.get('append_minionid_config_dirs', []):
-        if directory in ['pki_dir', 'cachedir', 'extension_modules']:
+        if directory in ('pki_dir', 'cachedir', 'extension_modules'):
             newdirectory = os.path.join(opts[directory], opts['id'])
             opts[directory] = newdirectory
-
-    if 'default_include' in overrides and '{id}' in overrides['default_include']:
-        opts['default_include'] = overrides['default_include'].replace('{id}', opts['id'])
+        elif directory == 'default_include' and directory in opts:
+            include_dir = os.path.dirname(opts[directory])
+            new_include_dir = os.path.join(include_dir,
+                                           opts['id'],
+                                           os.path.basename(opts[directory]))
+            opts[directory] = new_include_dir
 
     # pidfile can be in the list of append_minionid_config_dirs, but pidfile
     # is the actual path with the filename, not a directory.
@@ -3339,6 +3365,8 @@ def master_config(path, env_var='SALT_MASTER_CONFIG', defaults=None, exit_on_con
     # out or not present.
     if opts.get('nodegroups') is None:
         opts['nodegroups'] = DEFAULT_MASTER_OPTS.get('nodegroups', {})
+    if salt.utils.is_dictlist(opts['nodegroups']):
+        opts['nodegroups'] = salt.utils.repack_dictlist(opts['nodegroups'])
     if opts.get('transport') == 'raet' and 'aes' in opts:
         opts.pop('aes')
     apply_sdb(opts)

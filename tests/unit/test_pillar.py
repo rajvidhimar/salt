@@ -22,6 +22,13 @@ import salt.pillar
 @skipIf(NO_MOCK, NO_MOCK_REASON)
 class PillarTestCase(TestCase):
 
+    def tearDown(self):
+        for attrname in ('generic_file', 'generic_minion_file', 'ssh_file', 'ssh_minion_file', 'top_file'):
+            try:
+                delattr(self, attrname)
+            except AttributeError:
+                continue
+
     @patch('salt.pillar.compile_template')
     def test_pillarenv_from_saltenv(self, compile_template):
         opts = {
@@ -119,6 +126,36 @@ class PillarTestCase(TestCase):
         self.assertEqual(
             pillar.render_pillar({'base': ['foo.sls']}),
             ({'foo': 'bar2'}, [])
+        )
+
+        # Test includes using empty key directive
+        compile_template.side_effect = [
+            {'foo': 'bar', 'include': [{'blah': {'key': ''}}]},
+            {'foo': 'bar2'}
+        ]
+        self.assertEqual(
+            pillar.render_pillar({'base': ['foo.sls']}),
+            ({'foo': 'bar2'}, [])
+        )
+
+        # Test includes using simple non-nested key
+        compile_template.side_effect = [
+            {'foo': 'bar', 'include': [{'blah': {'key': 'nested'}}]},
+            {'foo': 'bar2'}
+        ]
+        self.assertEqual(
+            pillar.render_pillar({'base': ['foo.sls']}),
+            ({'foo': 'bar', 'nested': {'foo': 'bar2'}}, [])
+        )
+
+        # Test includes using nested key
+        compile_template.side_effect = [
+            {'foo': 'bar', 'include': [{'blah': {'key': 'nested:level'}}]},
+            {'foo': 'bar2'}
+        ]
+        self.assertEqual(
+            pillar.render_pillar({'base': ['foo.sls']}),
+            ({'foo': 'bar', 'nested': {'level': {'foo': 'bar2'}}}, [])
         )
 
     @patch('salt.pillar.salt.fileclient.get_file_client', autospec=True)

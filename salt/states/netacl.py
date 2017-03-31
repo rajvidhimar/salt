@@ -49,6 +49,8 @@ try:
 except ImportError:
     HAS_NAPALM = False
 
+import salt.utils.napalm
+
 # ------------------------------------------------------------------------------
 # state properties
 # ------------------------------------------------------------------------------
@@ -77,49 +79,6 @@ def __virtual__():
 # ------------------------------------------------------------------------------
 # helper functions -- will not be exported
 # ------------------------------------------------------------------------------
-
-
-def _default_ret(name):
-    '''
-    Return the default dict of the state output.
-    '''
-    ret = {
-        'name': name,
-        'changes': {},
-        'already_configured': False,
-        'result': False,
-        'comment': ''
-    }
-    return ret
-
-
-def _loaded_ret(ret, loaded, test, debug):
-    '''
-    Return the final state output.
-
-    ret
-        The initial state output structure.
-
-    loaded
-        The loaded dictionary.
-    '''
-    applied = loaded.get('result', False)
-    result = (applied if not applied else None) if test else applied
-    _comment = loaded.get('comment', '')
-    comment = _comment if not test else 'Testing mode: {tail}'.format(tail=_comment)
-    if result is True and not comment:
-        comment = 'Configuration changed!'
-    ret.update({
-        'changes': {
-            'diff': loaded.get('diff', '')
-        },
-        'already_configured': loaded.get('already_configured', False),
-        'result': result,
-        'comment': comment,
-    })
-    if debug:
-        ret['changes']['loaded'] = loaded.get('loaded_config', '')
-    return ret
 
 # ------------------------------------------------------------------------------
 # callable functions
@@ -161,7 +120,6 @@ def term(name,
 
     pillar_key: ``acl``
         The key in the pillar containing the default attributes values. Default: ``acl``.
-        If the pillar contains the following structure:
 
     pillarenv
         Query the master to generate fresh pillar data on the fly,
@@ -173,6 +131,8 @@ def term(name,
 
     merge_pillar: ``False``
         Merge the CLI variables with the pillar. Default: ``False``.
+
+        The properties specified through the state arguments have higher priority than the pillar.
 
     revision_id
         Add a comment in the term config having the description for the changes applied.
@@ -217,9 +177,9 @@ def term(name,
     **term_fields
         Term attributes.
         To see what fields are supported, please consult the list of supported keywords_.
-            Some platforms have few other optional_ keyworkds.
+            Some platforms have few other optional_ keywords.
 
-            .. _keywords:https://github.com/google/capirca/wiki/Policy-format#keywords
+            .. _keywords: https://github.com/google/capirca/wiki/Policy-format#keywords
             .. _optional: https://github.com/google/capirca/wiki/Policy-format#optionally-supported-keywords
 
     .. note::
@@ -355,8 +315,6 @@ def term(name,
 
         With the configuration above, the user is able to select the 1000-2000 and 3000-4000 source port ranges.
 
-    The output is a dictionary having the same form as :mod:`net.load_config <salt.modules.napalm_network.load_config>`.
-
     CLI Example:
 
     .. code-block:: bash
@@ -367,7 +325,7 @@ def term(name,
 
     .. code-block:: yaml
 
-        edge01.sfo04:
+        edge01.bjm01:
         ----------
                   ID: update_icmp_first_term
             Function: netacl.term
@@ -397,7 +355,7 @@ def term(name,
                           +        }
                           +    }
 
-        Summary for edge01.sfo04
+        Summary for edge01.bjm01
         ------------
         Succeeded: 1 (unchanged=1, changed=1)
         Failed:    0
@@ -410,19 +368,20 @@ def term(name,
     .. code-block:: yaml
 
         firewall:
-          block-icmp:
-            first-term:
-              protocol:
-                - icmp
-              action: reject
+          - block-icmp:
+              terms:
+                - first-term:
+                    protocol:
+                      - icmp
+                    action: reject
 
     State SLS example:
 
-    .. code-block:: yaml
+    .. code-block:: jinja
 
         {%- set filter_name = 'block-icmp' -%}
         {%- set term_name = 'first-term' -%}
-        {%- set my_term_cfg = pillar['acl'][filter_name][term_name] -%}
+        {%- set my_term_cfg = salt.netacl.get_term_pillar(filter_name, term_name) -%}
 
         update_icmp_first_term:
           netacl.term:
@@ -430,9 +389,32 @@ def term(name,
             - filter_options:
                 - not-interface-specific
             - term_name: {{ term_name }}
-            - {{ my_term_cfg }}
+            - {{ my_term_cfg | json }}
+
+    Or directly referencing the pillar keys:
+
+    .. code-block:: yaml
+
+        update_icmp_first_term:
+          netacl.term:
+            - filter_name: block-icmp
+            - filter_options:
+                - not-interface-specific
+            - term_name: first-term
+            - merge_pillar: true
+
+    .. note::
+        The first method allows the user to eventually apply complex manipulation
+        and / or retrieve the data from external services before passing the
+        data to the state. The second one is more straighforward, for less
+        complex cases when loading the data directly from the pillar is sufficient.
+
+    .. note::
+        When passing retrieved pillar data into the state file, it is strongly
+        recommended to use the json serializer explicitly (`` | json``),
+        instead of relying on the default Python serializer.
     '''
-    ret = _default_ret(name)
+    ret = salt.utils.napalm.default_ret(name)
     test = __opts__['test'] or test
     if not filter_options:
         filter_options = []
@@ -453,13 +435,14 @@ def term(name,
                                                  commit=commit,
                                                  debug=debug,
                                                  **term_fields)
-    return _loaded_ret(ret, loaded, test, debug)
+    return salt.utils.napalm.loaded_ret(ret, loaded, test, debug)
 
 
 def filter(name,  # pylint: disable=redefined-builtin
            filter_name,
            filter_options=None,
            terms=None,
+           prepend=True,
            pillar_key='acl',
            pillarenv=None,
            saltenv=None,
@@ -489,6 +472,12 @@ def filter(name,  # pylint: disable=redefined-builtin
         If not specified or empty, will try to load the configuration from the pillar,
         unless ``merge_pillar`` is set as ``False``.
 
+    prepend: ``True``
+        When ``merge_pillar`` is set as ``True``, the final list of terms generated by merging
+        the terms from ``terms`` with those defined in the pillar (if any): new terms are prepended
+        at the beginning, while existing ones will preserve the position. To add the new terms
+        at the end of the list, set this argument to ``False``.
+
     pillar_key: ``acl``
         The key in the pillar containing the default attributes values. Default: ``acl``.
 
@@ -501,7 +490,15 @@ def filter(name,  # pylint: disable=redefined-builtin
         :conf_minion:`pillarenv_from_saltenv`, and is otherwise ignored.
 
     merge_pillar: ``False``
-        Merge the CLI variables with the pillar. Default: ``True``
+        Merge ``terms`` with the corresponding value from the pillar. Default: ``False``.
+
+        .. note::
+            By default this state does not merge, to avoid any unexpected behaviours.
+
+            The merge logic depends on the ``prepend`` argument.
+
+            The terms specified through the ``terms`` argument have higher priority
+            than the pillar.
 
     only_lower_merge: ``False``
         Specify if it should merge only the terms fields. Otherwise it will try
@@ -531,7 +528,6 @@ def filter(name,  # pylint: disable=redefined-builtin
         Debug mode. Will insert a new key under the output dictionary,
         as ``loaded_config`` contaning the raw configuration loaded on the device.
 
-    The output is a dictionary having the same form as :mod:`net.load_config <salt.modules.napalm_network.load_config>`.
     CLI Example:
 
     .. code-block:: bash
@@ -588,31 +584,47 @@ def filter(name,  # pylint: disable=redefined-builtin
     .. code-block:: yaml
 
         acl:
-          my-filter:
-            options:
-              - inet6
-            my-term:
-              source_port: [1234, 1235]
-              protocol:
-                - tcp
-                - udp
-              source_address: 1.2.3.4
-              action: reject
-            my-other-term:
-              source_port:
-                - [5678, 5680]
-              protocol: tcp
-              action: accept
+          - my-filter:
+              options:
+                - inet6
+              terms:
+                - my-term:
+                    source_port: [1234, 1235]
+                    protocol:
+                      - tcp
+                      - udp
+                    source_address: 1.2.3.4
+                    action: reject
+                - my-other-term:
+                    source_port:
+                      - [5678, 5680]
+                    protocol: tcp
+                    action: accept
 
     State SLS Example:
 
+    .. code-block:: jinja
+
+        {%- set filter_name = 'my-filter' -%}
+        {%- set my_filter_cfg = salt.netacl.get_filter_pillar(filter_name, pillar_key='firewall') -%}
+        my_first_filter_state:
+          netacl.filter:
+            - filter_name: {{ filter_name }}
+            - options: {{ my_filter_cfg['options'] | json }}
+            - terms: {{ my_filter_cfg['terms'] | json }}
+            - revision_date: false
+            - revision_no: 5
+            - debug: true
+
+    Or:
+
     .. code-block:: yaml
 
-        {% set my_filter_cfg = pillar.get('acl').get('my-filter') -%}
-        my-filter_state:
+        my_first_filter_state:
           netacl.filter:
             - filter_name: my-filter
-            - terms: {{ my_filter_cfg }}
+            - merge_pillar: true
+            - pillar_key: firewall
             - revision_date: false
             - revision_no: 5
             - debug: true
@@ -620,16 +632,28 @@ def filter(name,  # pylint: disable=redefined-builtin
     In the example above, as ``inet6`` has been specified in the ``filter_options``,
     the configuration chunk referring to ``my-term`` has been ignored as it referred to
     IPv4 only (from ``source_address`` field).
+
+    .. note::
+        The first method allows the user to eventually apply complex manipulation
+        and / or retrieve the data from external services before passing the
+        data to the state. The second one is more straighforward, for less
+        complex cases when loading the data directly from the pillar is sufficient.
+
+    .. note::
+        When passing retrieved pillar data into the state file, it is strongly
+        recommended to use the json serializer explicitly (`` | json``),
+        instead of relying on the default Python serializer.
     '''
-    ret = _default_ret(name)
+    ret = salt.utils.napalm.default_ret(name)
     test = __opts__['test'] or test
     if not filter_options:
         filter_options = []
     if not terms:
-        terms = {}
+        terms = []
     loaded = __salt__['netacl.load_filter_config'](filter_name,
                                                    filter_options=filter_options,
                                                    terms=terms,
+                                                   prepend=prepend,
                                                    pillar_key=pillar_key,
                                                    pillarenv=pillarenv,
                                                    saltenv=saltenv,
@@ -642,11 +666,12 @@ def filter(name,  # pylint: disable=redefined-builtin
                                                    test=test,
                                                    commit=commit,
                                                    debug=debug)
-    return _loaded_ret(ret, loaded, test, debug)
+    return salt.utils.napalm.loaded_ret(ret, loaded, test, debug)
 
 
 def managed(name,
             filters=None,
+            prepend=True,
             pillar_key='acl',
             pillarenv=None,
             saltenv=None,
@@ -667,6 +692,12 @@ def managed(name,
         If not specified or empty, will try to load the configuration from the pillar,
         unless ``merge_pillar`` is set as ``False``.
 
+    prepend: ``True``
+        When ``merge_pillar`` is set as ``True``, the final list of filters generated by merging
+        the filters from ``filters`` with those defined in the pillar (if any): new filters are prepended
+        at the beginning, while existing ones will preserve the position. To add the new filters
+        at the end of the list, set this argument to ``False``.
+
     pillar_key: ``acl``
         The key in the pillar containing the default attributes values. Default: ``acl``.
 
@@ -679,7 +710,15 @@ def managed(name,
         :conf_minion:`pillarenv_from_saltenv`, and is otherwise ignored.
 
     merge_pillar: ``False``
-        Merge the CLI variables with the pillar. Default: ``False``.
+        Merge the ``filters`` wil the corresponding values from the pillar. Default: ``False``.
+
+        .. note::
+            By default this state does not merge, to avoid any unexpected behaviours.
+
+            The merge logic depends on the ``prepend`` argument.
+
+            The filters specified through the ``filters`` argument have higher priority
+            than the pillar.
 
     only_lower_merge: ``False``
         Specify if it should merge only the filters and terms fields. Otherwise it will try
@@ -708,8 +747,6 @@ def managed(name,
     debug: ``False``
         Debug mode. Will insert a new key under the output dictionary,
         as ``loaded_config`` contaning the raw configuration loaded on the device.
-
-    The output is a dictionary having the same form as :mod:`net.load_config <salt.modules.napalm_network.load_config>`.
 
     CLI Example:
 
@@ -740,23 +777,6 @@ def managed(name,
                               +         ** $Revision: 2 $
                               +         **
                               +         */
-                              +        filter block-icmp {
-                              +            interface-specific;
-                              +            term first-term {
-                              +                from {
-                              +                    protocol icmp;
-                              +                }
-                              +                then {
-                              +                    reject;
-                              +                }
-                              +            }
-                              +        }
-                              +        /*
-                              +         ** $Id: netacl_example $
-                              +         ** $Date: 2017/07/03 $
-                              +         ** $Revision: 2 $
-                              +         **
-                              +         */
                               +        filter my-filter {
                               +            interface-specific;
                               +            term my-term {
@@ -779,30 +799,25 @@ def managed(name,
                               +                then accept;
                               +            }
                               +        }
+                              +        /*
+                              +         ** $Id: netacl_example $
+                              +         ** $Date: 2017/07/03 $
+                              +         ** $Revision: 2 $
+                              +         **
+                              +         */
+                              +        filter block-icmp {
+                              +            interface-specific;
+                              +            term first-term {
+                              +                from {
+                              +                    protocol icmp;
+                              +                }
+                              +                then {
+                              +                    reject;
+                              +                }
+                              +            }
+                              +        }
                               +    }
                           loaded:
-                              firewall {
-                                  family inet {
-                                      replace:
-                                      /*
-                                      ** $Id: netacl_example $
-                                      ** $Date: 2017/07/03 $
-                                      ** $Revision: 2 $
-                                      **
-                                      */
-                                      filter block-icmp {
-                                          interface-specific;
-                                          term first-term {
-                                              from {
-                                                  protocol icmp;
-                                              }
-                                              then {
-                                                  reject;
-                                              }
-                                          }
-                                      }
-                                  }
-                              }
                               firewall {
                                   family inet {
                                       replace:
@@ -836,6 +851,28 @@ def managed(name,
                                       }
                                   }
                               }
+                              firewall {
+                                  family inet {
+                                      replace:
+                                      /*
+                                      ** $Id: netacl_example $
+                                      ** $Date: 2017/07/03 $
+                                      ** $Revision: 2 $
+                                      **
+                                      */
+                                      filter block-icmp {
+                                          interface-specific;
+                                          term first-term {
+                                              from {
+                                                  protocol icmp;
+                                              }
+                                              then {
+                                                  reject;
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
 
             Summary for edge01.bjm01
             ------------
@@ -850,41 +887,66 @@ def managed(name,
     .. code-block:: yaml
 
         firewall:
-          my-filter:
-            my-term:
-              source_port: [1234, 1235]
-              protocol:
-                - tcp
-                - udp
-              source_address: 1.2.3.4
-              action: reject
-            my-other-term:
-              source_port:
-                - [5678, 5680]
-              protocol: tcp
-              action: accept
-          block-icmp:
-            first-term:
-              protocol:
-                - icmp
-              action: reject
+          - my-filter:
+              terms:
+                - my-term:
+                    source_port: [1234, 1235]
+                    protocol:
+                      - tcp
+                      - udp
+                    source_address: 1.2.3.4
+                    action: reject
+                - my-other-term:
+                    source_port:
+                      - [5678, 5680]
+                    protocol: tcp
+                    action: accept
+          - block-icmp:
+              terms:
+                - first-term:
+                    protocol:
+                      - icmp
+                    action: reject
 
     Example SLS file:
 
-    .. code-block:: yaml
+    .. code-block:: jinja
 
         {%- set fw_filters = pillar.get('firewall', {}) -%}
         netacl_example:
           netacl.managed:
-            - filters: {{ fw_filters }}
+            - filters: {{ fw_filters | json }}
             - revision_no: 2
             - debug: true
+
+    Or:
+
+    .. code-block:: yaml
+
+        netacl_example:
+          netacl.managed:
+            - pillar_key: firewall
+            - merge_pillar: true
+            - revision_no: 2
+            - debug: true
+
+    .. note::
+        The first method allows the user to eventually apply complex manipulation
+        and / or retrieve the data from external services before passing the
+        data to the state. The second one is more straighforward, for less
+        complex cases when loading the data directly from the pillar is sufficient.
+
+    .. note::
+        When passing retrieved pillar data into the state file, it is strongly
+        recommended to use the json serializer explicitly (`` | json``),
+        instead of relying on the default Python serializer.
     '''
-    ret = _default_ret(name)
+    ret = salt.utils.napalm.default_ret(name)
     test = __opts__['test'] or test
     if not filters:
-        filters = {}
+        filters = []
     loaded = __salt__['netacl.load_policy_config'](filters=filters,
+                                                   prepend=prepend,
                                                    pillar_key=pillar_key,
                                                    pillarenv=pillarenv,
                                                    saltenv=saltenv,
@@ -897,4 +959,4 @@ def managed(name,
                                                    test=test,
                                                    commit=commit,
                                                    debug=debug)
-    return _loaded_ret(ret, loaded, test, debug)
+    return salt.utils.napalm.loaded_ret(ret, loaded, test, debug)

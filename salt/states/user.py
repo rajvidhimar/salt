@@ -221,7 +221,8 @@ def present(name,
             win_homedrive=None,
             win_profile=None,
             win_logonscript=None,
-            win_description=None):
+            win_description=None,
+            nologinit=False):
     '''
     Ensure that the named user is present with the specified properties
 
@@ -273,6 +274,13 @@ def present(name,
 
             Additionally, parent directories will *not* be created. The parent
             directory for ``home`` must already exist.
+
+    nologinit : False
+        If set to ``True``, it will not add the user to lastlog and faillog
+        databases.
+
+        .. note::
+            Not supported on Windows or Mac OS.
 
     password
         A password hash to set for the user. This field is only supported on
@@ -505,16 +513,16 @@ def present(name,
                 continue
             # run chhome once to avoid any possible bad side-effect
             if key == 'home' and 'homeDoesNotExist' not in changes:
-                if __grains__['kernel'] == 'Darwin':
+                if __grains__['kernel'] in ('Darwin', 'Windows'):
                     __salt__['user.chhome'](name, val)
                 else:
-                    __salt__['user.chhome'](name, val, False)
+                    __salt__['user.chhome'](name, val, persist=False)
                 continue
             if key == 'homeDoesNotExist':
-                if __grains__['kernel'] == 'Darwin':
+                if __grains__['kernel'] in ('Darwin', 'Windows'):
                     __salt__['user.chhome'](name, val)
                 else:
-                    __salt__['user.chhome'](name, val, True)
+                    __salt__['user.chhome'](name, val, persist=True)
                 if not os.path.isdir(val):
                     __salt__['file.mkdir'](val, pre['uid'], pre['gid'], 0o755)
                 continue
@@ -635,6 +643,7 @@ def present(name,
                       'workphone': workphone,
                       'homephone': homephone,
                       'createhome': createhome,
+                      'nologinit': nologinit,
                       'loginclass': loginclass}
         else:
             params = ({'name': name,

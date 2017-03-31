@@ -147,7 +147,7 @@ should be opened on our tracker_, with the following information:
 Why aren't my custom modules/states/etc. available on my Minions?
 -----------------------------------------------------------------
 
-Custom modules are synced to Minions when 
+Custom modules are synced to Minions when
 :mod:`saltutil.sync_modules <salt.modules.saltutil.sync_modules>`,
 or :mod:`saltutil.sync_all <salt.modules.saltutil.sync_all>` is run.
 Custom modules are also synced by :mod:`state.apply` when run without
@@ -165,6 +165,11 @@ when run without any arguments.
 Other custom types (renderers, outputters, etc.) have similar behavior, see the
 documentation for the :mod:`saltutil <salt.modules.saltutil>` module for more
 information.
+
+:ref:`This reactor example <minion-start-reactor>` can be used to automatically
+sync custom types when the minion connects to the master, to help with this
+chicken-and-egg issue.
+
 
 Module ``X`` isn't available, even though the shell command it uses is installed. Why?
 --------------------------------------------------------------------------------------
@@ -263,12 +268,12 @@ Upgrade without automatic restart
 *********************************
 
 Doing the Minion upgrade seems to be a simplest state in your SLS file at
-first. But the operating systems such as Debian GNU/Linux, Ununtu and their
+first. But the operating systems such as Debian GNU/Linux, Ubuntu and their
 derivatives start the service after the package installation by default.
 To prevent this, we need to create policy layer which will prevent the Minion
 service to restart right after the upgrade:
 
-.. code-block:: yaml
+.. code-block:: jinja
 
     {%- if grains['os_family'] == 'Debian' %}
 
@@ -316,7 +321,7 @@ Restart using states
 Now we can apply the workaround to restart the Minion in reliable way.
 The following example works on both UNIX-like and Windows operating systems:
 
-.. code-block:: yaml
+.. code-block:: jinja
 
     Restart Salt Minion:
       cmd.run:
@@ -333,7 +338,7 @@ However, it requires more advanced tricks to upgrade from legacy version of
 Salt (before ``2016.3.0``), where executing commands in the background is not
 supported:
 
-.. code-block:: yaml
+.. code-block:: jinja
 
     Restart Salt Minion:
       cmd.run:

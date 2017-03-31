@@ -109,7 +109,7 @@ execution modules
     dnsmasq
     dnsutil
     dockercompose
-    docker
+    dockermod
     dpkg
     drac
     dracr
@@ -201,6 +201,7 @@ execution modules
     localemod
     locate
     logadm
+    logmod
     logrotate
     lvs
     lxc

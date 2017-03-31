@@ -31,6 +31,7 @@ import salt.utils.timed_subprocess
 import salt.grains.extra
 import salt.ext.six as six
 from salt.utils import vt
+import salt.utils.templates
 from salt.exceptions import CommandExecutionError, TimedProcTimeoutError, \
     SaltInvocationError
 from salt.log import LOG_LEVELS
@@ -439,7 +440,7 @@ def _run(cmd,
                     env_encoded = env_encoded.encode(__salt_system_encoding__)
                 env_runas = dict(list(zip(*[iter(env_encoded.split(b'\0'))]*2)))
 
-            env_runas = {sdecode(k): sdecode(v) for k, v in six.iteritems(env_runas)}
+            env_runas = dict((sdecode(k), sdecode(v)) for k, v in six.iteritems(env_runas))
             env_runas.update(env)
             env = env_runas
             # Encode unicode kwargs to filesystem encoding to avoid a
@@ -768,10 +769,10 @@ def run(cmd,
 
     :param str stdin: A string of standard input can be specified for the
       command to be run using the ``stdin`` parameter. This can be useful in cases
-      where sensitive information must be read from standard input.:
+      where sensitive information must be read from standard input.
 
     :param str runas: User to run script as. If running on a Windows minion you
-      must also pass a password
+      must also pass a password.
 
     :param str password: Windows only. Required when specifying ``runas``. This
       parameter will be ignored on non-Windows platforms.
@@ -781,10 +782,14 @@ def run(cmd,
     :param str shell: Shell to execute under. Defaults to the system default
       shell.
 
-    :param bool python_shell: If False, let python handle the positional
-      arguments. Set to True to use shell features, such as pipes or redirection
+    :param bool python_shell: If ``False``, let python handle the positional
+      arguments. Set to ``True`` to use shell features, such as pipes or
+      redirection.
 
-    :param bool bg: If True, run command in background and do not await or deliver it's results
+    :param bool bg: If ``True``, run command in background and do not await or
+      deliver it's results
+
+      .. versionadded:: 2016.3.0
 
     :param list env: A list of environment variables to be set prior to
       execution.
@@ -817,7 +822,7 @@ def run(cmd,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -1025,7 +1030,7 @@ def shell(cmd,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -1210,7 +1215,7 @@ def run_stdout(cmd,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -1391,7 +1396,7 @@ def run_stderr(cmd,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -1573,7 +1578,7 @@ def run_all(cmd,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -1609,13 +1614,22 @@ def run_all(cmd,
       ``env`` represents the environment variables for the command, and
       should be formatted as a dict, or a YAML string which resolves to a dict.
 
-    redirect_stderr : False
-        If set to ``True``, then stderr will be redirected to stdout. This is
-        helpful for cases where obtaining both the retcode and output is
-        desired, but it is not desired to have the output separated into both
-        stdout and stderr.
+    :param bool redirect_stderr: If set to ``True``, then stderr will be
+      redirected to stdout. This is helpful for cases where obtaining both the
+      retcode and output is desired, but it is not desired to have the output
+      separated into both stdout and stderr.
 
         .. versionadded:: 2015.8.2
+
+    :param str password: Windows only. Required when specifying ``runas``. This
+      parameter will be ignored on non-Windows platforms.
+
+      .. versionadded:: 2016.3.0
+
+    :param bool bg: If ``True``, run command in background and do not await or
+      deliver it's results
+
+      .. versionadded:: 2016.3.6
 
     CLI Example:
 
@@ -1763,7 +1777,7 @@ def retcode(cmd,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -1999,7 +2013,7 @@ def script(source,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -2224,7 +2238,7 @@ def script_retcode(source,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -2388,7 +2402,7 @@ def exec_code_all(lang, code, cwd=None):
     return ret
 
 
-def tty(device, echo=None):
+def tty(device, echo=''):
     '''
     Echo a string to a specific tty
 
@@ -2407,7 +2421,7 @@ def tty(device, echo=None):
         return {'Error': 'The specified device is not a valid TTY'}
     try:
         with salt.utils.fopen(teletype, 'wb') as tty_device:
-            tty_device.write(echo)
+            tty_device.write(salt.utils.to_bytes(echo))
         return {
             'Success': 'Message was successfully echoed to {0}'.format(teletype)
         }
@@ -2500,7 +2514,7 @@ def run_chroot(root,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -2956,7 +2970,7 @@ def powershell(cmd,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
@@ -3142,7 +3156,7 @@ def run_bg(cmd,
 
         One can still use the existing $PATH by using a bit of Jinja:
 
-        .. code-block:: yaml
+        .. code-block:: jinja
 
             {% set current_path = salt['environ.get']('PATH', '/bin:/usr/bin') %}
 
