@@ -440,13 +440,13 @@ class Test_Junos_Module(TestCase):
         ret['out'] = True
         self.assertEqual(junos.rollback(), ret)
 
-    @patch('jnpr.junos.utils.config.Config.rollback')
-    def test_rollback_without_args_fail(self, mock_rollback):
-        mock_rollback.return_value = False
-        ret = dict()
-        ret['message'] = 'Rollback failed'
-        ret['out'] = False
-        self.assertEqual(junos.rollback(), ret)
+    # @patch('jnpr.junos.utils.config.Config.rollback')
+    # def test_rollback_without_args_fail(self, mock_rollback):
+    #     mock_rollback.return_value = False
+    #     ret = dict()
+    #     ret['message'] = 'Rollback failed'
+    #     ret['out'] = False
+    #     self.assertEqual(junos.rollback(), ret)
 
     @patch('jnpr.junos.utils.config.Config.commit_check')
     @patch('jnpr.junos.utils.config.Config.commit')
@@ -595,7 +595,7 @@ class Test_Junos_Module(TestCase):
                                              mock_commit_check):
         mock_commit_check.side_effect = self.raise_exception
         ret = dict()
-        ret['message'] = 'Could not commit check due to "Test exception"'
+        ret['message'] = 'Commit check failed with "Test exception"'
         ret['out'] = False
         self.assertEqual(junos.rollback(), ret)
 
@@ -611,17 +611,6 @@ class Test_Junos_Module(TestCase):
         ret = dict()
         ret['message'] = \
             'Rollback successful but commit failed with error "Test exception"'
-        ret['out'] = False
-        self.assertEqual(junos.rollback(), ret)
-
-    @patch('jnpr.junos.utils.config.Config.commit_check')
-    @patch('jnpr.junos.utils.config.Config.rollback')
-    def test_rollback_commit_check_fails(self,
-                                         mock_rollback,
-                                         mock_commit_check):
-        mock_commit_check.return_value = False
-        ret = dict()
-        ret['message'] = 'Rollback succesfull but pre-commit check failed.'
         ret['out'] = False
         self.assertEqual(junos.rollback(), ret)
 

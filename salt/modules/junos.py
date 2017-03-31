@@ -611,7 +611,7 @@ def cli(command=None, format='text', **kwargs):
     try:
         result = conn.cli(command, format, warning=False)
     except Exception as exception:
-        ret['error'] = 'Execution failed due to "{0}"'.format(exception)
+        ret['message'] = 'Execution failed due to "{0}"'.format(exception)
         ret['out'] = False
         return ret
 
