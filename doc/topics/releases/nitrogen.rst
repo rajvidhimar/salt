@@ -129,6 +129,23 @@ Execution Module Changes
   :py:func:`Debian/Ubuntu <salt.modules.aptpkg.list_repo_pkgs>` and
   :py:func:`Arch Linux <salt.modules.pacman.list_repo_pkgs>`-based distros.
 
+
+Proxy Module Changes
+====================
+
+The :conf_proxy:`proxy_merge_grains_in_module` configuration variable
+introduced in 2016.3, has been changed, defaulting to ``True``.
+
+The connection with the remote device is kept alive by default, when the
+module implements the ``alive`` function and :conf_proxy:`proxy_keep_alive`
+is set to ``True``. The polling interval is set using the
+:conf_proxy:`proxy_keep_alive_interval` option which defaults to 1 minute.
+
+The developers are also able to use the :conf_proxy:`proxy_always_alive`,
+when designing a proxy module flexible enough to open the
+connection with the remote device only when required.
+
+
 Wildcard Versions in :py:func:`pkg.installed <salt.states.pkg.installed>` States
 ================================================================================
 
@@ -196,6 +213,56 @@ release cycle (two major releases after this one), those who are using the
 :ref:`LocalClient <local-client>` (either directly, or implictly via a
 :ref:`netapi module <all-netapi-modules>`) are encouraged to update their code
 to use ``tgt_type``.
+
+
+Network Automation
+==================
+
+NAPALM
+------
+
+Introduced in 2016.11, the modules for cross-vendor network automation
+have been improved, enhanced and widenened in scope:
+
+- Manage network devices like servers: the NAPALM modules have been transformed
+  so they can run in both proxy and regular minions. That means, if the
+  operating system allows, the salt-minion package can be installed directly
+  on the network gear. Examples of such devices (also covered by NAPALM)
+  include: Arista, Cumulus, Cisco IOS-XR or Cisco Nexus.
+- Not always alive: in certain less dynamic environments,
+  maintaining the remote connection permanently open with the network device
+  is not always beneficial. In those particular cases, the user can select
+  to initialize the connection only when needed, by specifying the field
+  ``always_alive: false`` in the :mod:`proxy configuration <salt.proxy.napalm>`
+  or using the :conf_proxy:`proxy_always_alive` option.
+- Proxy keepalive: due to external factors, the connection with the remote
+  device can be dropped, e.g.: packet loss, idle time (no commands issued
+  within a couple of minutes or seconds), or simply the device decides to kill
+  the process. In Nitrogen we have introduced the functionality to re-establish
+  the connection. One can disable feature this feature through the
+  :conf_proxy:`proxy_keep_alive` option and adjust the polling frequency
+  speciying a custom value for :conf_proxy:`proxy_keep_alive_interval`,
+  in minutes.
+
+New modules:
+
+- :mod:`Netconfig state <salt.states.netconfig>` - Manage the configuration
+  of network devices using arbitrary templates and the Salt-specific
+  advanced templating methodologies.
+- :mod:`Network ACL execution module <salt.modules.napalm_acl>` - Generate and
+  load ACL (firewall) configuration on network devices.
+- :mod:`Network ACL state <salt.states.netacl>` - Manage the firewall
+  configuration. It only requires writing the pillar structure correctly!
+- :mod:`NET finder <salt.runners.net>` - Runner to find details easily and
+  fast. It's smart enough to know what you are looking for. It will search
+  in the details of the network interfaces, IP addresses, MAC address tables,
+  ARP tables and LLDP neighbors.
+- :mod:`BGP finder <salt.runners.bgp>` - Runner to search BGP neighbors details.
+
+New grains: :mod:`Host <salt.grains.napalm.host>`,
+:mod:`Username <salt.grains.napalm.username>` and
+:mod:`Optional args <salt.grains.napalm.optional_args>`.
+
 
 Custom Refspecs in GitFS / git_pillar / winrepo
 ===============================================

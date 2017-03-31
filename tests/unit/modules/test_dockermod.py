@@ -7,6 +7,7 @@ Unit tests for the docker module
 from __future__ import absolute_import
 
 # Import Salt Testing Libs
+from tests.support.mixins import LoaderModuleMockMixin
 from tests.support.unit import skipIf, TestCase
 from tests.support.mock import (
     MagicMock,
@@ -19,11 +20,7 @@ from tests.support.mock import (
 # Import Salt Libs
 from salt.ext.six.moves import range
 from salt.exceptions import CommandExecutionError
-import salt.modules.docker as docker_mod
-
-docker_mod.__context__ = {'docker.docker_version': ''}
-docker_mod.__salt__ = {}
-docker_mod.__opts__ = {}
+import salt.modules.dockermod as docker_mod
 
 
 def _docker_py_version():
@@ -37,10 +34,17 @@ def _docker_py_version():
 
 @skipIf(NO_MOCK, NO_MOCK_REASON)
 @skipIf(docker_mod.HAS_DOCKER_PY is False, 'docker-py must be installed to run these tests. Skipping.')
-class DockerTestCase(TestCase):
+class DockerTestCase(TestCase, LoaderModuleMockMixin):
     '''
     Validate docker module
     '''
+    def setup_loader_modules(self):
+        return {docker_mod: {'__context__': {'docker.docker_version': ''}}}
+
+    try:
+        docker_version = docker_mod.docker.version_info
+    except AttributeError:
+        docker_version = 0,
 
     def test_ps_with_host_true(self):
         '''
@@ -155,7 +159,7 @@ class DockerTestCase(TestCase):
                     ids=['01234'],
         )
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_create_network(self, *args):
         '''
@@ -181,7 +185,7 @@ class DockerTestCase(TestCase):
                     driver='bridge',
         )
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_remove_network(self, *args):
         '''
@@ -201,7 +205,7 @@ class DockerTestCase(TestCase):
                 docker_mod.remove_network('foo')
         client.remove_network.assert_called_once_with('foo')
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_inspect_network(self, *args):
         '''
@@ -221,7 +225,7 @@ class DockerTestCase(TestCase):
                 docker_mod.inspect_network('foo')
         client.inspect_network.assert_called_once_with('foo')
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_connect_container_to_network(self, *args):
         '''
@@ -245,7 +249,7 @@ class DockerTestCase(TestCase):
         client.connect_container_to_network.assert_called_once_with(
             'container', 'foo', None)
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_disconnect_container_from_network(self, *args):
         '''
@@ -266,7 +270,7 @@ class DockerTestCase(TestCase):
         client.disconnect_container_from_network.assert_called_once_with(
             'container', 'foo')
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_list_volumes(self, *args):
         '''
@@ -289,7 +293,7 @@ class DockerTestCase(TestCase):
             filters={'dangling': [True]},
         )
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_create_volume(self, *args):
         '''
@@ -316,7 +320,7 @@ class DockerTestCase(TestCase):
                     driver_opts={},
         )
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_remove_volume(self, *args):
         '''
@@ -335,7 +339,7 @@ class DockerTestCase(TestCase):
                 docker_mod.remove_volume('foo')
         client.remove_volume.assert_called_once_with('foo')
 
-    @skipIf(_docker_py_version() < (1, 5, 0),
+    @skipIf(docker_version < (1, 5, 0),
             'docker module must be installed to run this test or is too old. >=1.5.0')
     def test_inspect_volume(self, *args):
         '''

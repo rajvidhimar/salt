@@ -86,9 +86,9 @@ except ImportError:
 
 try:
     import salt.utils.win_functions
-    HAS_WIN32 = True
+    HAS_WIN_FUNCTIONS = True
 except ImportError:
-    HAS_WIN32 = False
+    HAS_WIN_FUNCTIONS = False
 
 try:
     import grp
@@ -290,7 +290,7 @@ def get_user():
     '''
     if HAS_PWD:
         return pwd.getpwuid(os.geteuid()).pw_name
-    elif HAS_WIN32:
+    elif HAS_WIN_FUNCTIONS and salt.utils.win_functions.HAS_WIN32:
         return salt.utils.win_functions.get_current_user()
     else:
         raise CommandExecutionError("Required external libraries not found. Need 'pwd' or 'win32api")
@@ -1331,9 +1331,13 @@ def fopen(*args, **kwargs):
             if 'b' in kwargs['mode']:
                 binary = True
         if not binary:
-            kwargs['encoding'] = 'utf-8'
+            kwargs['encoding'] = __salt_system_encoding__
+
+    if six.PY3 and not binary and not kwargs.get('newline', None):
+        kwargs['newline'] = ''
 
     fhandle = open(*args, **kwargs)
+
     if is_fcntl_available():
         # modify the file descriptor on systems with fcntl
         # unix and unix-like systems only
@@ -1785,6 +1789,14 @@ def is_openbsd():
     Simple function to return if host is OpenBSD or not
     '''
     return sys.platform.startswith('openbsd')
+
+
+@real_memoize
+def is_aix():
+    '''
+    Simple function to return if host is AIX or not
+    '''
+    return sys.platform.startswith('aix')
 
 
 def is_fcntl_available(check_sunos=False):
