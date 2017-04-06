@@ -440,14 +440,6 @@ class Test_Junos_Module(TestCase):
         ret['out'] = True
         self.assertEqual(junos.rollback(), ret)
 
-    # @patch('jnpr.junos.utils.config.Config.rollback')
-    # def test_rollback_without_args_fail(self, mock_rollback):
-    #     mock_rollback.return_value = False
-    #     ret = dict()
-    #     ret['message'] = 'Rollback failed'
-    #     ret['out'] = False
-    #     self.assertEqual(junos.rollback(), ret)
-
     @patch('jnpr.junos.utils.config.Config.commit_check')
     @patch('jnpr.junos.utils.config.Config.commit')
     @patch('jnpr.junos.utils.config.Config.rollback')

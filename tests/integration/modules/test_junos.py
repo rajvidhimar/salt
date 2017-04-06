@@ -5,6 +5,7 @@ from jnpr.junos import Device
 from jnpr.junos.utils.config import Config
 import os
 
+
 @attr('functional')
 class TestJunosModule(unittest.TestCase):
 
@@ -14,9 +15,11 @@ class TestJunosModule(unittest.TestCase):
         self.dev = Device(host='10.221.129.70', user='regress', passwd='MaRtInI')
         self.dev.open()
         self.cu = Config(self.dev)
+        #self.cu.lock()
 
     @classmethod
     def tearDownClass(self):
+        #self.cu.unlock()
         self.dev.close()
 
     def test_facts_refresh(self):
@@ -57,15 +60,14 @@ class TestJunosModule(unittest.TestCase):
             self.assertTrue(result['dev']['out'])
         os.remove('/srv/salt/delete_me')
 
-    # def test_rpc_text_with_dest_arg(self):
-    #     result = self.caller.cmd('dev', 'junos.rpc', ['get-interface-information', '/srv/salt/delete_me', 'text'],
-    #                              kwarg={'terse': True, 'interface_name': 'lo0'})
-    #     with open('/srv/salt/delete_me', 'r') as fp:
-    #         print type(fp.readlines())
-    #         self.assertEqual(" ['\n', 'Interface", fp.readlines())
-    #         self.assertEqual(type(result['dev']['rpc_reply']), str)
-    #         self.assertTrue(result['dev']['out'])
-    #     os.remove('/srv/salt/delete_me')
+    def test_rpc_text_with_dest_arg(self):
+        result = self.caller.cmd('dev', 'junos.rpc', ['get-interface-information', '/srv/salt/delete_me', 'text'],
+                                 kwarg={'terse': True, 'interface_name': 'lo0'})
+        with open('/srv/salt/delete_me', 'r') as fp:
+            self.assertTrue("Interface" in fp.readlines()[1])
+            self.assertEqual(type(result['dev']['rpc_reply']), str)
+            self.assertTrue(result['dev']['out'])
+        os.remove('/srv/salt/delete_me')
 
     def test_rpc_exception(self):
         result = self.caller.cmd('dev', 'junos.rpc', ['incorrect-rpc'])
@@ -104,82 +106,6 @@ class TestJunosModule(unittest.TestCase):
         self.assertEqual(result['dev']['message'], 'Please provide the hostname.')
         self.assertFalse(result['dev']['out'])
 
-    # def test_set_hostname(self):
-    #     result = self.caller.cmd('dev', 'junos.set_hostname', ['test'])
-    #     self.assertEqual(result['dev']['message'], 'Successfully changed hostname.')
-    #     self.assertTrue(result['dev']['out'])
-    #     name = self.caller.cmd('dev', 'junos.cli', ['show configuration system host-name'])
-    #     self.assertEqual(str(name['dev']['message']), '\nhost-name test;\n' )
-    #     self.caller.cmd('dev', 'junos.rollback', [1])
-
-    def test_set_hostname_load_exception(self):
-        result = self.caller.cmd('dev', 'junos.set_hostname', ['Invalid#'])
-        self.assertTrue('Could not load configuration due to error' in result['dev']['message'])
-        self.assertFalse(result['dev']['out'])
-
-
-    def test_set_hostname_commit_check_exception(self):
-        self.cu.lock()
-        self.cu.load('set interfaces lo0 unit 57 family inet address 10.0.0.1/32')
-        self.cu.unlock()
-        result = self.caller.cmd('dev', 'junos.set_hostname', ['test-name'])
-        self.assertTrue('Commit check failed with' in result['dev']['message'])
-        self.assertFalse(result['dev']['out'])
-        self.caller.cmd('dev', 'junos.rollback')
-
-    # def test_set_hostname_commit_exception(self):
-    #     result = self.caller.cmd('dev', 'junos.set_hostname', ['test-name'], kwarg={'confirm': 0.1})
-    #     self.assertTrue('Successfully loaded host-name but commit failed with' in result['dev']['message'])
-    #     self.assertFalse(result['dev']['out'])
-    #     self.caller.cmd('dev', 'junos.rollback')
-
-    # def test_commit(self):
-    #     self.cu.lock()
-    #     self.cu.load('set interfaces ge-0/0/3 description "salt test"')
-    #     self.cu.unlock()
-    #     result = self.caller.cmd('dev', 'junos.commit')
-    #     self.assertEqual(result['dev']['message'], 'Commit Successful.',)
-    #     self.assertTrue(result['dev']['out'])
-    #     output = self.caller.cmd('dev', 'junos.cli', ['show interfaces ge-0/0/3 descriptions'])
-    #     self.assertTrue('ge-0/0/3' and 'salt test' in output['dev']['message'])
-    #     self.caller.cmd('dev', 'junos.rollback', [1])
-
-    def test_commit_check_exception(self):
-        #self.cu.lock()
-        self.cu.load('set interfaces lo0 unit 57 family inet address 10.0.0.1/32')
-        #self.cu.unlock()
-        result = self.caller.cmd('dev', 'junos.commit')
-        self.assertTrue('Commit check failed due to' in result['dev']['message'])
-        self.assertFalse(result['dev']['out'])
-        self.caller.cmd('dev', 'junos.rollback')
-
-    def test_commit_exception(self):
-        result = self.caller.cmd('dev', 'junos.commit', kwarg = {'confirm': 0.1})
-        self.assertTrue('Commit check succeeded but actual commit failed with' in result['dev']['message'] )
-        self.assertFalse(result['dev']['out'])
-        self.caller.cmd('dev', 'junos.rollback')
-
-    def test_commit_with_detail_as_arg(self):
-        self.cu.lock()
-        self.cu.load('set interfaces ge-0/0/2 description "salt test"')
-        self.cu.unlock()
-        result = self.caller.cmd('dev', 'junos.commit', kwarg={'detail': True})
-        self.assertTrue('routing-engine' in result['dev']['message'])
-        self.assertTrue('name' in result['dev']['message']['routing-engine'])
-        self.assertTrue(isinstance(result['dev']['message']['routing-engine']['progress-indicator'], list))
-        self.assertTrue(result['dev']['out'])
-        self.caller.cmd('dev', 'junos.rollback', [1])
-
-    def test_rollback(self):
-        self.cu.lock()
-        self.cu.load('set interfaces ge-0/0/4 description "salt test"')
-        self.cu.unlock()
-        result = self.caller.cmd('dev', 'junos.rollback')
-        self.assertEqual(result['dev']['message'], 'Rollback successful')
-        self.assertTrue(result['dev']['out'])
-        output = self.caller.cmd('dev', 'junos.cli', ['show interfaces ge-0/0/4 descriptions'])
-        self.assertEqual(output['dev']['message'], '')
-
     def test_rollback_exception(self):
         self.cu.lock()
         self.cu.load('set interfaces ge-0/0/3 description "salt test"')
@@ -187,23 +113,22 @@ class TestJunosModule(unittest.TestCase):
         result = self.caller.cmd('dev', 'junos.rollback', [0.1])
         self.assertTrue('Rollback failed due to' in result['dev']['message'])
         self.assertFalse(result['dev']['out'])
+        self.cu.lock()
+        self.cu.rollback()
+        self.cu.commit()
+        self.cu.unlock()
 
-    def test_rollback_with_id_arg(self):
-        self.caller.cmd('dev', 'junos.set_hostname', ['test-name'])
-        result = self.caller.cmd('dev', 'junos.rollback', [1])
-        self.assertEqual(result['dev']['message'], 'Rollback successful')
-        self.assertTrue(result['dev']['out'])
-        name = self.caller.cmd('dev', 'junos.cli', ['show configuration system host-name'])
-        self.assertTrue('host-name re0;' in name['dev']['message'])
 
     def test_diff(self):
         self.cu.lock()
-        self.cu.load('set interfaces ge-0/0/1 description salt-test')
+        self.cu.load('set interfaces ge-0/0/5 description "salt test"')
+        self.cu.commit()
+        self.cu.rollback(rb_id=1)
+        self.cu.commit()
         self.cu.unlock()
-        result = self.caller.cmd('dev', 'junos.diff')
-        print result['dev']
-        # self.assertTrue('description salt-test;' in result['dev']['message'] and 'ge-0/0/1' in result['dev']['message'])
-        # self.assertTrue(result['dev']['out'])
+        result = self.caller.cmd('dev', 'junos.diff', [1])
+        self.assertTrue(' ge-0/0/5' in result['dev']['message'] and 'description "salt test"' in result['dev']['message'])
+        self.assertTrue(result['dev']['out'])
         self.caller.cmd('dev', 'junos.rollback')
 
     def test_diff_exception(self):
@@ -254,13 +179,6 @@ class TestJunosModule(unittest.TestCase):
         result = self.caller.cmd('dev', 'junos.cli', ['show system commit revision', ''])
         self.assertTrue('Revision:' in result['dev']['message'])
         self.assertTrue(result['dev']['out'])
-
-    # def test_cli_exception(self):
-    #     result = self.caller.cmd('dev', 'junos.cli', ['cause error'])
-    #     print result
-    #     self.assertTrue('Execution failed due to' in result['dev']['message'])
-    #     self.assertFalse(result['dev']['out'])
-
 
     def test_cli_with_dest_arg(self):
         result = self.caller.cmd('dev', 'junos.cli', ['show system commit revision'], kwarg = {'dest': '/srv/salt/delete_me'})

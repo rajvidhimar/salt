@@ -21,6 +21,7 @@ try:
     from jnpr.junos import Device
     from jnpr.junos.utils.sw import SW
     from jnpr.junos.utils.scp import SCP
+    from jnpr.junos.utils.config import Config
     import jnpr.junos.utils
     import jnpr.junos.cfg
     import jxmlease
@@ -268,35 +269,40 @@ def set_hostname(hostname=None, **kwargs):
     else:
         op.update(kwargs)
 
-    # Added to recent versions of JunOs
-    # Use text format instead
-    set_string = 'set system host-name {0}'.format(hostname)
     try:
-        conn.cu.load(set_string, format='set')
-    except Exception as exception:
-        ret['message'] = 'Could not load configuration due to error "{0}"'.format(
-            exception.message)
-        ret['out'] = False
-        return ret
+        with Config(conn, mode='private') as cu:
+            # Added to recent versions of JunOs
+            # Use text format instead
+            set_string = 'set system host-name {0}'.format(hostname)
+            try:
+                cu.load(set_string, format='set')
+            except Exception as exception:
+                ret['message'] = 'Could not load configuration due to error "{0}"'.format(
+                    exception.message)
+                ret['out'] = False
+                return ret
 
-    try:
-        conn.cu.commit_check()
-    except Exception as exception:
-        ret['message'] = 'Commit check failed with "{0}"'.format(
-            exception.message)
-        ret['out'] = False
-        conn.cu.rollback()
-        return ret
+            try:
+                cu.commit_check()
+            except Exception as exception:
+                ret['message'] = 'Commit check failed with "{0}"'.format(
+                    exception.message)
+                ret['out'] = False
+                conn.cu.rollback()
+                return ret
 
-    try:
-        conn.cu.commit(**op)
-        ret['message'] = 'Successfully changed hostname.'
-        ret['out'] = True
+            try:
+                cu.commit(**op)
+                ret['message'] = 'Successfully changed hostname.'
+                ret['out'] = True
+            except Exception as exception:
+                ret['out'] = False
+                ret['message'] = 'Successfully loaded host-name but commit failed with "{0}"'.format(
+                    exception.message)
+                cu.rollback()
     except Exception as exception:
         ret['out'] = False
-        ret['message'] = 'Successfully loaded host-name but commit failed with "{0}"'.format(
-            exception.message)
-        conn.cu.rollback()
+        ret['message'] = 'Lock failed'
 
     return ret
 
@@ -357,25 +363,30 @@ def commit(**kwargs):
     op['detail'] = op.get('detail', False)
 
     try:
-        conn.cu.commit_check()
-    except Exception as exception:
-        ret['message'] = 'Commit check failed due to "{0}"'.format(
-            exception.message)
-        ret['out'] = False
-        return ret
+        with Config(conn, mode='exclusive') as cu:
+            try:
+                cu.commit_check()
+            except Exception as exception:
+                ret['message'] = 'Commit check failed due to "{0}"'.format(
+                    exception.message)
+                ret['out'] = False
+                return ret
 
-    try:
-        commit_response = conn.cu.commit(**op)
-        ret['out'] = True
-        if op['detail']:
-            ret['message'] = jxmlease.parse(etree.tostring(commit_response))
-        else:
-            ret['message'] = 'Commit Successful.'
+            try:
+                commit_response = cu.commit(**op)
+                ret['out'] = True
+                if op['detail']:
+                    ret['message'] = jxmlease.parse(etree.tostring(commit_response))
+                else:
+                    ret['message'] = 'Commit Successful.'
+            except Exception as exception:
+                ret['out'] = False
+                ret['message'] = \
+                    'Commit check succeeded but actual commit failed with "{0}"' \
+                    .format(exception.message)
     except Exception as exception:
         ret['out'] = False
-        ret['message'] = \
-            'Commit check succeeded but actual commit failed with "{0}"' \
-            .format(exception.message)
+        ret['message'] = 'Lock error'
 
     return ret
 
@@ -419,40 +430,46 @@ def rollback(id=0, **kwargs):
                 op.update(kwargs['__pub_arg'][-1])
     else:
         op.update(kwargs)
-
     try:
-        ret['out'] = conn.cu.rollback(id)
-    except Exception as exception:
-        ret['message'] = 'Rollback failed due to "{0}"'.format(exception.message)
-        ret['out'] = False
-        return ret
-    ret['message'] = 'Rollback successful'
+        with Config(conn, mode='exclusive') as cu:
+            try:
+                ret['out'] = cu.rollback(id)
+            except Exception as exception:
+                ret['message'] = 'Rollback failed due to "{0}"'.format(exception.message)
+                ret['out'] = False
+                return ret
+            ret['message'] = 'Rollback successful'
 
-    if 'diffs_file' in op and op['diffs_file'] is not None:
-        diff = conn.cu.diff()
-        if diff is not None:
-            with fopen(op['diffs_file'], 'w') as fp:
-                fp.write(diff)
-        else:
-            log.info(
-                'No diff between current configuration and \
-                rollbacked configuration, so no diff file created')
+            if 'diffs_file' in op and op['diffs_file'] is not None:
+                diff = cu.diff()
+                if diff is not None:
+                    with fopen(op['diffs_file'], 'w') as fp:
+                        fp.write(diff)
+                else:
+                    log.info(
+                        'No diff between current configuration and \
+                        rollbacked configuration, so no diff file created')
 
-    try:
-        conn.cu.commit_check()
-    except Exception as exception:
-        ret['message'] = 'Commit check failed with "{0}"'.format(
-            exception.message)
-        ret['out'] = False
-        return ret
+            try:
+                cu.commit_check()
+            except Exception as exception:
+                ret['message'] = 'Commit check failed with "{0}"'.format(
+                    exception.message)
+                ret['out'] = False
+                return ret
 
-    try:
-        conn.cu.commit(**op)
-        ret['out'] = True
+            try:
+                cu.commit(**op)
+                ret['out'] = True
+            except Exception as exception:
+                ret['out'] = False
+                ret['message'] = \
+                    'Rollback successful but commit failed with error "{0}"'\
+                        .format(exception.message)
     except Exception as exception:
         ret['out'] = False
         ret['message'] = \
-            'Rollback successful but commit failed with error "{0}"'\
+            'Lock error due to "{0}"' \
                 .format(exception.message)
 
     return ret
@@ -479,11 +496,15 @@ def diff(id=0):
     ret = dict()
     ret['out'] = True
     try:
-        ret['message'] = conn.cu.diff(rb_id=id)
+        with Config(conn, mode='exclusive') as cu:
+            try:
+                ret['message'] = cu.diff(rb_id=id)
+            except Exception as exception:
+                ret['message'] = 'Could not get diff with error "{0}"'.format(
+                    exception)
+                ret['out'] = False
     except Exception as exception:
-        ret['message'] = 'Could not get diff with error "{0}"'.format(
-            exception)
-        ret['out'] = False
+        ret['message'] = 'Lock error'
 
     return ret
 
@@ -828,56 +849,61 @@ def install_config(path=None, **kwargs):
     elif 'overwrite' in op and not op['overwrite']:
         op['merge'] = True
         del op['overwrite']
-
     try:
-        conn.cu.load(**op)
+        with Config(conn, mode='exclusive') as cu:
+            try:
+                cu.load(**op)
 
+            except Exception as exception:
+                ret['message'] = 'Could not load configuration due to : "{0}"'.format(
+                    exception)
+                ret['format'] = template_format
+                ret['out'] = False
+                return ret
+
+            finally:
+                safe_rm(template_cached_path)
+
+            config_diff = cu.diff()
+            if config_diff is None:
+                ret['message'] = 'Configuration already applied!'
+                ret['out'] = True
+                cu.rollback()
+                return ret
+
+            commit_params = {}
+            if 'confirm' in op:
+                commit_params['confirm'] = op['confirm']
+            if 'comment' in op:
+                commit_params['comment'] = op['comment']
+
+            try:
+                check = cu.commit_check()
+            except Exception as exception:
+                ret['message'] = \
+                    'Commit check threw the following exception: "{0}"'\
+                    .format(exception)
+
+                ret['out'] = False
+                return ret
+
+            if check:
+                try:
+                    cu.commit(**commit_params)
+                    ret['message'] = 'Successfully loaded and committed!'
+                except Exception as exception:
+                    ret['message'] = \
+                        'Commit check successful but commit failed with "{0}"'\
+                        .format(exception)
+                    ret['out'] = False
+                    return ret
+            else:
+                ret['message'] = 'Loaded configuration but commit check failed.'
+                ret['out'] = False
+                cu.rollback()
     except Exception as exception:
-        ret['message'] = 'Could not load configuration due to : "{0}"'.format(
-            exception)
-        ret['format'] = template_format
-        ret['out'] = False
+        ret['message'] = 'Lock error'
         return ret
-
-    finally:
-        safe_rm(template_cached_path)
-
-    config_diff = conn.cu.diff()
-    if config_diff is None:
-        ret['message'] = 'Configuration already applied!'
-        ret['out'] = True
-        return ret
-
-    commit_params = {}
-    if 'confirm' in op:
-        commit_params['confirm'] = op['confirm']
-    if 'comment' in op:
-        commit_params['comment'] = op['comment']
-
-    try:
-        check = conn.cu.commit_check()
-    except Exception as exception:
-        ret['message'] = \
-            'Commit check threw the following exception: "{0}"'\
-            .format(exception)
-
-        ret['out'] = False
-        return ret
-
-    if check:
-        try:
-            conn.cu.commit(**commit_params)
-            ret['message'] = 'Successfully loaded and committed!'
-        except Exception as exception:
-            ret['message'] = \
-                'Commit check successful but commit failed with "{0}"'\
-                .format(exception)
-            ret['out'] = False
-            return ret
-    else:
-        ret['message'] = 'Loaded configuration but commit check failed.'
-        ret['out'] = False
-        conn.cu.rollback()
 
     try:
         if write_diff and config_diff is not None:
