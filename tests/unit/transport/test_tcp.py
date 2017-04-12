@@ -5,7 +5,6 @@
 
 # Import python libs
 from __future__ import absolute_import
-import os
 import threading
 
 import tornado.gen
@@ -21,19 +20,12 @@ import salt.exceptions
 
 # Import Salt Testing libs
 from tests.support.unit import TestCase, skipIf
-import tests.integration as integration
-
-# Import Salt libs
-from tests.unit.transport.test_req import ReqChannelMixin
-from tests.unit.transport.test_pub import PubChannelMixin
+from tests.support.helpers import get_unused_localhost_port
+from tests.support.mixins import AdaptedConfigurationTestCaseMixin
+from tests.unit.transport.mixins import PubChannelMixin, ReqChannelMixin
 
 
-# TODO: move to a library?
-def get_config_file_path(filename):
-    return os.path.join(integration.TMP, 'config', filename)
-
-
-class BaseTCPReqCase(TestCase):
+class BaseTCPReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
     '''
     Test the req server/client pair
     '''
@@ -41,21 +33,35 @@ class BaseTCPReqCase(TestCase):
     def setUpClass(cls):
         if not hasattr(cls, '_handle_payload'):
             return
-        cls.master_opts = salt.config.master_config(get_config_file_path('master'))
-        cls.master_opts.update({
-            'transport': 'tcp',
-            'auto_accept': True,
-        })
+        ret_port = get_unused_localhost_port()
+        publish_port = get_unused_localhost_port()
+        tcp_master_pub_port = get_unused_localhost_port()
+        tcp_master_pull_port = get_unused_localhost_port()
+        tcp_master_publish_pull = get_unused_localhost_port()
+        tcp_master_workers = get_unused_localhost_port()
+        cls.master_config = cls.get_temp_config(
+            'master',
+            **{'transport': 'tcp',
+               'auto_accept': True,
+               'ret_port': ret_port,
+               'publish_port': publish_port,
+               'tcp_master_pub_port': tcp_master_pub_port,
+               'tcp_master_pull_port': tcp_master_pull_port,
+               'tcp_master_publish_pull': tcp_master_publish_pull,
+               'tcp_master_workers': tcp_master_workers}
+        )
 
-        cls.minion_opts = salt.config.minion_config(get_config_file_path('minion'))
-        cls.minion_opts.update({
-            'transport': 'tcp',
-            'master_uri': 'tcp://127.0.0.1:{0}'.format(cls.minion_opts['master_port']),
-        })
+        cls.minion_config = cls.get_temp_config(
+            'minion',
+            **{'transport': 'tcp',
+               'master_ip': '127.0.0.1',
+               'master_port': ret_port,
+               'master_uri': 'tcp://127.0.0.1:{0}'.format(ret_port)}
+        )
 
         cls.process_manager = salt.utils.process.ProcessManager(name='ReqServer_ProcessManager')
 
-        cls.server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_opts)
+        cls.server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_config)
         cls.server_channel.pre_fork(cls.process_manager)
 
         cls.io_loop = tornado.ioloop.IOLoop()
@@ -70,11 +76,12 @@ class BaseTCPReqCase(TestCase):
     def tearDownClass(cls):
         if not hasattr(cls, '_handle_payload'):
             return
-        cls.io_loop.stop()
-        cls.server_thread.join()
-        cls.process_manager.kill_children()
-        cls.server_channel.close()
-        del cls.server_channel
+        if hasattr(cls, 'io_loop'):
+            cls.io_loop.add_callback(cls.io_loop.stop)
+            cls.server_thread.join()
+            cls.process_manager.kill_children()
+            cls.server_channel.close()
+            del cls.server_channel
 
     @classmethod
     @tornado.gen.coroutine
@@ -91,7 +98,10 @@ class ClearReqTestCases(BaseTCPReqCase, ReqChannelMixin):
     Test all of the clear msg stuff
     '''
     def setUp(self):
-        self.channel = salt.transport.client.ReqChannel.factory(self.minion_opts, crypt='clear')
+        self.channel = salt.transport.client.ReqChannel.factory(self.minion_config, crypt='clear')
+
+    def tearDown(self):
+        del self.channel
 
     @classmethod
     @tornado.gen.coroutine
@@ -105,7 +115,10 @@ class ClearReqTestCases(BaseTCPReqCase, ReqChannelMixin):
 @skipIf(salt.utils.is_darwin(), 'hanging test suite on MacOS')
 class AESReqTestCases(BaseTCPReqCase, ReqChannelMixin):
     def setUp(self):
-        self.channel = salt.transport.client.ReqChannel.factory(self.minion_opts)
+        self.channel = salt.transport.client.ReqChannel.factory(self.minion_config)
+
+    def tearDown(self):
+        del self.channel
 
     @classmethod
     @tornado.gen.coroutine
@@ -127,33 +140,46 @@ class AESReqTestCases(BaseTCPReqCase, ReqChannelMixin):
                 ret = self.channel.send(msg)
 
 
-class BaseTCPPubCase(AsyncTestCase):
+class BaseTCPPubCase(AsyncTestCase, AdaptedConfigurationTestCaseMixin):
     '''
     Test the req server/client pair
     '''
     @classmethod
     def setUpClass(cls):
-        cls.master_opts = salt.config.master_config(get_config_file_path('master'))
-        cls.master_opts.update({
-            'transport': 'tcp',
-            'auto_accept': True,
-        })
+        ret_port = get_unused_localhost_port()
+        publish_port = get_unused_localhost_port()
+        tcp_master_pub_port = get_unused_localhost_port()
+        tcp_master_pull_port = get_unused_localhost_port()
+        tcp_master_publish_pull = get_unused_localhost_port()
+        tcp_master_workers = get_unused_localhost_port()
+        cls.master_config = cls.get_temp_config(
+            'master',
+            **{'transport': 'tcp',
+               'auto_accept': True,
+               'ret_port': ret_port,
+               'publish_port': publish_port,
+               'tcp_master_pub_port': tcp_master_pub_port,
+               'tcp_master_pull_port': tcp_master_pull_port,
+               'tcp_master_publish_pull': tcp_master_publish_pull,
+               'tcp_master_workers': tcp_master_workers}
+        )
 
-        cls.minion_opts = salt.config.minion_config(get_config_file_path('minion'))
-        cls.minion_opts.update({
-            'transport': 'tcp',
-            'master_ip': '127.0.0.1',
-            'auth_timeout': 1,
-            'master_uri': 'tcp://127.0.0.1:{0}'.format(cls.minion_opts['master_port']),
-        })
+        cls.minion_config = cls.get_temp_config(
+            'minion',
+            **{'transport': 'tcp',
+               'master_ip': '127.0.0.1',
+               'auth_timeout': 1,
+               'master_port': ret_port,
+               'master_uri': 'tcp://127.0.0.1:{0}'.format(ret_port)}
+        )
 
         cls.process_manager = salt.utils.process.ProcessManager(name='ReqServer_ProcessManager')
 
-        cls.server_channel = salt.transport.server.PubServerChannel.factory(cls.master_opts)
+        cls.server_channel = salt.transport.server.PubServerChannel.factory(cls.master_config)
         cls.server_channel.pre_fork(cls.process_manager)
 
         # we also require req server for auth
-        cls.req_server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_opts)
+        cls.req_server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_config)
         cls.req_server_channel.pre_fork(cls.process_manager)
 
         cls._server_io_loop = tornado.ioloop.IOLoop()
@@ -171,7 +197,7 @@ class BaseTCPPubCase(AsyncTestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls._server_io_loop.stop()
+        cls._server_io_loop.add_callback(cls._server_io_loop.stop)
         cls.server_thread.join()
         cls.process_manager.kill_children()
         cls.req_server_channel.close()
@@ -189,6 +215,8 @@ class BaseTCPPubCase(AsyncTestCase):
                 failures.append((k, v))
         if len(failures) > 0:
             raise Exception('FDs still attached to the IOLoop: {0}'.format(failures))
+        del self.channel
+        del self._start_handlers
 
 
 @skipIf(True, 'Skip until we can devote time to fix this test')

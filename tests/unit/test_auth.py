@@ -12,7 +12,7 @@ from tests.support.mock import patch, call, NO_MOCK, NO_MOCK_REASON, MagicMock
 
 # Import Salt libraries
 import salt.master
-import tests.integration as integration
+from tests.support.case import ModuleCase
 from salt import auth
 
 
@@ -64,14 +64,14 @@ class LoadAuthTestCase(TestCase):
 @patch('salt.master.tagify', MagicMock())
 @patch('salt.utils.event.SaltEvent.fire_event', return_value='dummy_tag')
 @patch('salt.auth.LoadAuth.time_auth', MagicMock(return_value=True))
-class MasterACLTestCase(integration.ModuleCase):
+class MasterACLTestCase(ModuleCase):
     '''
     A class to check various aspects of the publisher ACL system
     '''
     @patch('salt.minion.MasterMinion', MagicMock())
     @patch('salt.utils.verify.check_path_traversal', MagicMock())
     def setUp(self):
-        opts = self.get_config('master', from_scratch=True)
+        opts = self.get_temp_config('master')
         opts['publisher_acl'] = {}
         opts['publisher_acl_blacklist'] = {}
         opts['master_job_cache'] = ''
@@ -488,14 +488,14 @@ class MasterACLTestCase(integration.ModuleCase):
         self.assertEqual(fire_event_mock.mock_calls, [])
 
 
-class AuthACLTestCase(integration.ModuleCase):
+class AuthACLTestCase(ModuleCase):
     '''
     A class to check various aspects of the publisher ACL system
     '''
     @patch('salt.minion.MasterMinion', MagicMock())
     @patch('salt.utils.verify.check_path_traversal', MagicMock())
     def setUp(self):
-        opts = self.get_config('master', from_scratch=True)
+        opts = self.get_temp_config('master')
         opts['publisher_acl'] = {}
         opts['publisher_acl_blacklist'] = {}
         opts['master_job_cache'] = ''

@@ -20,7 +20,11 @@ from tests.support.mock import (
 )
 
 # Import Salt libs
+import salt.utils
+import salt.modules.zypper as zypper
 from salt.exceptions import CommandExecutionError
+
+# Import 3rd-party libs
 from salt.ext.six.moves import configparser
 import salt.ext.six as six
 
@@ -40,11 +44,14 @@ def get_test_data(filename):
     '''
     Return static test data
     '''
-    return open(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'zypp'), filename)).read()
+    with salt.utils.fopen(
+            os.path.join(
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), 'zypp'), filename)) as rfh:
+        return rfh.read()
 
 
 # Import Salt Libs
-import salt.modules.zypper as zypper
 
 
 @skipIf(NO_MOCK, NO_MOCK_REASON)
@@ -155,10 +162,10 @@ class ZypperTestCase(TestCase, LoaderModuleMockMixin):
         stdout_xml_snippet = '<?xml version="1.0"?><stream><message type="error">Booya!</message></stream>'
         sniffer = RunSniffer(stdout=stdout_xml_snippet, retcode=1)
         with patch.dict('salt.modules.zypper.__salt__', {'cmd.run_all': sniffer}):
-            with self.assertRaisesRegexp(CommandExecutionError, '^Zypper command failure: Booya!$'):
+            with self.assertRaisesRegex(CommandExecutionError, '^Zypper command failure: Booya!$'):
                 zypper.__zypper__.xml.call('crashme')
 
-            with self.assertRaisesRegexp(CommandExecutionError, "^Zypper command failure: Check Zypper's logs.$"):
+            with self.assertRaisesRegex(CommandExecutionError, "^Zypper command failure: Check Zypper's logs.$"):
                 zypper.__zypper__.call('crashme again')
 
             zypper.__zypper__.noraise.call('stay quiet')
@@ -182,7 +189,7 @@ class ZypperTestCase(TestCase, LoaderModuleMockMixin):
             'retcode': 1,
         }
         with patch.dict('salt.modules.zypper.__salt__', {'cmd.run_all': MagicMock(return_value=ref_out)}):
-            with self.assertRaisesRegexp(CommandExecutionError,
+            with self.assertRaisesRegex(CommandExecutionError,
                     "^Zypper command failure: Some handled zypper internal error\nAnother zypper internal error$"):
                 zypper.list_upgrades(refresh=False)
 
@@ -193,7 +200,7 @@ class ZypperTestCase(TestCase, LoaderModuleMockMixin):
             'stderr': ''
         }
         with patch.dict('salt.modules.zypper.__salt__', {'cmd.run_all': MagicMock(return_value=ref_out)}):
-            with self.assertRaisesRegexp(CommandExecutionError, "^Zypper command failure: Check Zypper's logs.$"):
+            with self.assertRaisesRegex(CommandExecutionError, "^Zypper command failure: Check Zypper's logs.$"):
                 zypper.list_upgrades(refresh=False)
 
     def test_list_products(self):

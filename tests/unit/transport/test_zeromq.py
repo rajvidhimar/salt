@@ -32,23 +32,18 @@ import salt.transport.client
 import salt.exceptions
 
 # Import test support libs
-import tests.integration as integration
-from tests.support.helpers import flaky
+from tests.support.paths import TMP_CONF_DIR
 from tests.support.unit import TestCase, skipIf
-from tests.unit.transport.test_req import ReqChannelMixin
-from tests.unit.transport.test_pub import PubChannelMixin
+from tests.support.helpers import flaky, get_unused_localhost_port
+from tests.support.mixins import AdaptedConfigurationTestCaseMixin
+from tests.unit.transport.mixins import PubChannelMixin, ReqChannelMixin
 
 ON_SUSE = False
 if 'SuSE' in linux_distribution(full_distribution_name=False):
     ON_SUSE = True
 
 
-# TODO: move to a library?
-def get_config_file_path(filename):
-    return os.path.join(integration.TMP, 'config', filename)
-
-
-class BaseZMQReqCase(TestCase):
+class BaseZMQReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
     '''
     Test the req server/client pair
     '''
@@ -56,23 +51,37 @@ class BaseZMQReqCase(TestCase):
     def setUpClass(cls):
         if not hasattr(cls, '_handle_payload'):
             return
-        cls.master_opts = salt.config.master_config(get_config_file_path('master'))
-        cls.master_opts.update({
-            'transport': 'zeromq',
-            'auto_accept': True,
-        })
+        ret_port = get_unused_localhost_port()
+        publish_port = get_unused_localhost_port()
+        tcp_master_pub_port = get_unused_localhost_port()
+        tcp_master_pull_port = get_unused_localhost_port()
+        tcp_master_publish_pull = get_unused_localhost_port()
+        tcp_master_workers = get_unused_localhost_port()
+        cls.master_config = cls.get_temp_config(
+            'master',
+            **{'transport': 'zeromq',
+               'auto_accept': True,
+               'ret_port': ret_port,
+               'publish_port': publish_port,
+               'tcp_master_pub_port': tcp_master_pub_port,
+               'tcp_master_pull_port': tcp_master_pull_port,
+               'tcp_master_publish_pull': tcp_master_publish_pull,
+               'tcp_master_workers': tcp_master_workers}
+        )
 
-        cls.minion_opts = salt.config.minion_config(get_config_file_path('minion'))
-        cls.minion_opts.update({
-            'transport': 'zeromq',
-            'auth_timeout': 5,
-            'auth_tries': 1,
-            'master_uri': 'tcp://127.0.0.1:{0}'.format(cls.minion_opts['master_port']),
-        })
+        cls.minion_config = cls.get_temp_config(
+            'minion',
+            **{'transport': 'zeromq',
+               'master_ip': '127.0.0.1',
+               'master_port': ret_port,
+               'auth_timeout': 5,
+               'auth_tries': 1,
+               'master_uri': 'tcp://127.0.0.1:{0}'.format(ret_port)}
+        )
 
         cls.process_manager = salt.utils.process.ProcessManager(name='ReqServer_ProcessManager')
 
-        cls.server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_opts)
+        cls.server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_config)
         cls.server_channel.pre_fork(cls.process_manager)
 
         cls.io_loop = zmq.eventloop.ioloop.ZMQIOLoop()
@@ -91,15 +100,16 @@ class BaseZMQReqCase(TestCase):
         # Let the test suite handle this instead.
         cls.process_manager.stop_restarting()
         cls.process_manager.kill_children()
+        cls.io_loop.add_callback(cls.io_loop.stop)
+        cls.server_thread.join()
         time.sleep(2)  # Give the procs a chance to fully close before we stop the io_loop
-        cls.io_loop.stop()
         cls.server_channel.close()
         del cls.server_channel
         del cls.io_loop
         del cls.process_manager
         del cls.server_thread
-        del cls.master_opts
-        del cls.minion_opts
+        del cls.master_config
+        del cls.minion_config
 
     @classmethod
     def _handle_payload(cls, payload):
@@ -114,7 +124,7 @@ class ClearReqTestCases(BaseZMQReqCase, ReqChannelMixin):
     Test all of the clear msg stuff
     '''
     def setUp(self):
-        self.channel = salt.transport.client.ReqChannel.factory(self.minion_opts, crypt='clear')
+        self.channel = salt.transport.client.ReqChannel.factory(self.minion_config, crypt='clear')
 
     def tearDown(self):
         del self.channel
@@ -132,7 +142,7 @@ class ClearReqTestCases(BaseZMQReqCase, ReqChannelMixin):
 @skipIf(ON_SUSE, 'Skipping until https://github.com/saltstack/salt/issues/32902 gets fixed')
 class AESReqTestCases(BaseZMQReqCase, ReqChannelMixin):
     def setUp(self):
-        self.channel = salt.transport.client.ReqChannel.factory(self.minion_opts)
+        self.channel = salt.transport.client.ReqChannel.factory(self.minion_config)
 
     def tearDown(self):
         del self.channel
@@ -166,32 +176,46 @@ class AESReqTestCases(BaseZMQReqCase, ReqChannelMixin):
                 ret = self.channel.send(msg, timeout=5)
 
 
-class BaseZMQPubCase(AsyncTestCase):
+class BaseZMQPubCase(AsyncTestCase, AdaptedConfigurationTestCaseMixin):
     '''
     Test the req server/client pair
     '''
     @classmethod
     def setUpClass(cls):
-        cls.master_opts = salt.config.master_config(get_config_file_path('master'))
-        cls.master_opts.update({
-            'transport': 'zeromq',
-            'auto_accept': True,
-        })
+        ret_port = get_unused_localhost_port()
+        publish_port = get_unused_localhost_port()
+        tcp_master_pub_port = get_unused_localhost_port()
+        tcp_master_pull_port = get_unused_localhost_port()
+        tcp_master_publish_pull = get_unused_localhost_port()
+        tcp_master_workers = get_unused_localhost_port()
+        cls.master_config = cls.get_temp_config(
+            'master',
+            **{'transport': 'zeromq',
+               'auto_accept': True,
+               'ret_port': ret_port,
+               'publish_port': publish_port,
+               'tcp_master_pub_port': tcp_master_pub_port,
+               'tcp_master_pull_port': tcp_master_pull_port,
+               'tcp_master_publish_pull': tcp_master_publish_pull,
+               'tcp_master_workers': tcp_master_workers}
+        )
 
-        cls.minion_opts = salt.config.minion_config(get_config_file_path('minion'))
-        cls.minion_opts.update({
-            'transport': 'zeromq',
-            'master_ip': '127.0.0.1',
-            'master_uri': 'tcp://127.0.0.1:{0}'.format(cls.minion_opts['master_port']),
-        })
+        cls.minion_config = salt.config.minion_config(os.path.join(TMP_CONF_DIR, 'minion'))
+        cls.minion_config = cls.get_temp_config(
+            'minion',
+            **{'transport': 'zeromq',
+               'master_ip': '127.0.0.1',
+               'master_port': ret_port,
+               'master_uri': 'tcp://127.0.0.1:{0}'.format(ret_port)}
+        )
 
         cls.process_manager = salt.utils.process.ProcessManager(name='ReqServer_ProcessManager')
 
-        cls.server_channel = salt.transport.server.PubServerChannel.factory(cls.master_opts)
+        cls.server_channel = salt.transport.server.PubServerChannel.factory(cls.master_config)
         cls.server_channel.pre_fork(cls.process_manager)
 
         # we also require req server for auth
-        cls.req_server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_opts)
+        cls.req_server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_config)
         cls.req_server_channel.pre_fork(cls.process_manager)
 
         cls._server_io_loop = zmq.eventloop.ioloop.ZMQIOLoop()
@@ -206,6 +230,8 @@ class BaseZMQPubCase(AsyncTestCase):
         cls.process_manager.kill_children()
         cls.process_manager.stop_restarting()
         time.sleep(2)  # Give the procs a chance to fully close before we stop the io_loop
+        cls.io_loop.add_callback(cls.io_loop.stop)
+        cls.server_thread.join()
         cls.req_server_channel.close()
         cls.server_channel.close()
         cls._server_io_loop.stop()
@@ -213,8 +239,8 @@ class BaseZMQPubCase(AsyncTestCase):
         del cls._server_io_loop
         del cls.process_manager
         del cls.server_thread
-        del cls.master_opts
-        del cls.minion_opts
+        del cls.master_config
+        del cls.minion_config
 
     @classmethod
     def _handle_payload(cls, payload):

@@ -9,8 +9,10 @@ import threading
 import time
 
 # Import Salt Testing libs
-import tests.integration as integration
+from tests.support.case import ModuleCase
 from tests.support.unit import skipIf
+from tests.support.paths import TMP
+from tests.support.mixins import SaltReturnAssertsMixin
 
 # Import salt libs
 import salt.utils
@@ -20,28 +22,19 @@ from salt.modules.virtualenv_mod import KNOWN_BINARY_NAMES
 import salt.ext.six as six
 
 
-class StateModuleTest(integration.ModuleCase,
-                      integration.SaltReturnAssertsMixIn):
+class StateModuleTest(ModuleCase, SaltReturnAssertsMixin):
     '''
     Validate the state module
     '''
 
     maxDiff = None
 
-    @classmethod
-    def setUpClass(cls):
-        class CustomModuleCase(integration.ModuleCase):
-            def runTest(self, *args):
-                pass
-        mod_case = CustomModuleCase()
-        mod_case.run_function('saltutil.sync_all')
-
     def test_show_highstate(self):
         '''
         state.show_highstate
         '''
         high = self.run_function('state.show_highstate')
-        destpath = os.path.join(integration.SYS_TMP_DIR, 'testfile')
+        destpath = os.path.join(TMP, 'testfile')
         self.assertTrue(isinstance(high, dict))
         self.assertTrue(destpath in high)
         self.assertEqual(high[destpath]['__env__'], 'base')
@@ -120,7 +113,7 @@ class StateModuleTest(integration.ModuleCase,
         '''
         remove minion state request file
         '''
-        cache_file = os.path.join(integration.RUNTIME_CONFIGS['minion']['cachedir'], 'req_state.p')
+        cache_file = os.path.join(self.get_config('minion')['cachedir'], 'req_state.p')
         if os.path.exists(cache_file):
             os.remove(cache_file)
 
@@ -191,7 +184,7 @@ class StateModuleTest(integration.ModuleCase,
         '''
         Verify that we can append a file's contents
         '''
-        testfile = os.path.join(integration.TMP, 'test.append')
+        testfile = os.path.join(TMP, 'test.append')
         if os.path.isfile(testfile):
             os.unlink(testfile)
 
@@ -258,7 +251,7 @@ class StateModuleTest(integration.ModuleCase,
                 - text: foo
 
         '''
-        testfile = os.path.join(integration.TMP, 'issue-1876')
+        testfile = os.path.join(TMP, 'issue-1876')
         sls = self.run_function('state.sls', mods='issue-1876')
         self.assertIn(
             'ID \'{0}\' in SLS \'issue-1876\' contains multiple state '
@@ -283,7 +276,7 @@ class StateModuleTest(integration.ModuleCase,
             expected = os.linesep.join(new_contents)
             expected += os.linesep
 
-        testfile = os.path.join(integration.TMP, 'issue-1879')
+        testfile = os.path.join(TMP, 'issue-1879')
         # Delete if exiting
         if os.path.isfile(testfile):
             os.unlink(testfile)
@@ -333,11 +326,11 @@ class StateModuleTest(integration.ModuleCase,
 
     def test_include(self):
         fnames = (
-            os.path.join(integration.SYS_TMP_DIR, 'include-test'),
-            os.path.join(integration.SYS_TMP_DIR, 'to-include-test')
+            os.path.join(TMP, 'include-test'),
+            os.path.join(TMP, 'to-include-test')
         )
         exclude_test_file = os.path.join(
-            integration.SYS_TMP_DIR, 'exclude-test'
+            TMP, 'exclude-test'
         )
         try:
             ret = self.run_function('state.sls', mods='include-test')
@@ -353,11 +346,11 @@ class StateModuleTest(integration.ModuleCase,
 
     def test_exclude(self):
         fnames = (
-            os.path.join(integration.SYS_TMP_DIR, 'include-test'),
-            os.path.join(integration.SYS_TMP_DIR, 'exclude-test')
+            os.path.join(TMP, 'include-test'),
+            os.path.join(TMP, 'exclude-test')
         )
         to_include_test_file = os.path.join(
-            integration.SYS_TMP_DIR, 'to-include-test'
+            TMP, 'to-include-test'
         )
         try:
             ret = self.run_function('state.sls', mods='exclude-test')
@@ -374,7 +367,7 @@ class StateModuleTest(integration.ModuleCase,
     @skipIf(salt.utils.which_bin(KNOWN_BINARY_NAMES) is None, 'virtualenv not installed')
     def test_issue_2068_template_str(self):
         venv_dir = os.path.join(
-            integration.SYS_TMP_DIR, 'issue-2068-template-str'
+            TMP, 'issue-2068-template-str'
         )
 
         try:
@@ -973,7 +966,7 @@ class StateModuleTest(integration.ModuleCase,
         #])
 
     def test_get_file_from_env_in_top_match(self):
-        tgt = os.path.join(integration.SYS_TMP_DIR, 'prod-cheese-file')
+        tgt = os.path.join(TMP, 'prod-cheese-file')
         try:
             ret = self.run_function(
                 'state.highstate', minion_tgt='sub_minion'
@@ -1225,7 +1218,7 @@ class StateModuleTest(integration.ModuleCase,
         '''
         test a state with the retry option that should return True immedietly (i.e. no retries)
         '''
-        testfile = os.path.join(integration.TMP, 'retry_file')
+        testfile = os.path.join(TMP, 'retry_file')
         state_run = self.run_function(
             'state.sls',
             mods='retry.retry_success'
@@ -1238,16 +1231,16 @@ class StateModuleTest(integration.ModuleCase,
         '''
         helper function to wait 30 seconds and then create the temp retry file
         '''
-        testfile = os.path.join(integration.TMP, 'retry_file')
+        testfile = os.path.join(TMP, 'retry_file')
         time.sleep(30)
-        open(testfile, 'a').close()
+        open(testfile, 'a').close()  # pylint: disable=resource-leakage
 
     def test_retry_option_eventual_success(self):
         '''
         test a state with the retry option that should return True after at least 4 retry attmempt
         but never run 15 attempts
         '''
-        testfile = os.path.join(integration.TMP, 'retry_file')
+        testfile = os.path.join(TMP, 'retry_file')
         create_thread = threading.Thread(target=self.run_create)
         create_thread.start()
         state_run = self.run_function(
@@ -1261,3 +1254,23 @@ class StateModuleTest(integration.ModuleCase,
         self.assertIn('Attempt 4:', state_run[retry_state]['comment'])
         self.assertNotIn('Attempt 15:', state_run[retry_state]['comment'])
         self.assertEqual(state_run[retry_state]['result'], True)
+
+    def test_issue_38683_require_order_failhard_combination(self):
+        '''
+        This tests the case where require, order, and failhard are all used together in a state definition.
+
+        Previously, the order option, which used in tandem with require and failhard, would cause the state
+        compiler to stacktrace. This exposed a logic error in the ``check_failhard`` function of the state
+        compiler. With the logic error resolved, this test should now pass.
+
+        See https://github.com/saltstack/salt/issues/38683 for more information.
+        '''
+        state_run = self.run_function(
+            'state.sls',
+            mods='requisites.require_order_failhard_combo'
+        )
+        state_id = 'test_|-b_|-b_|-fail_with_changes'
+
+        self.assertIn(state_id, state_run)
+        self.assertEqual(state_run[state_id]['comment'], 'Failure!')
+        self.assertFalse(state_run[state_id]['result'])

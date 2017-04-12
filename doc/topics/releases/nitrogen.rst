@@ -239,7 +239,7 @@ have been improved, enhanced and widenened in scope:
   device can be dropped, e.g.: packet loss, idle time (no commands issued
   within a couple of minutes or seconds), or simply the device decides to kill
   the process. In Nitrogen we have introduced the functionality to re-establish
-  the connection. One can disable feature this feature through the
+  the connection. One can disable this feature through the
   :conf_proxy:`proxy_keep_alive` option and adjust the polling frequency
   speciying a custom value for :conf_proxy:`proxy_keep_alive_interval`,
   in minutes.
@@ -253,11 +253,27 @@ New modules:
   load ACL (firewall) configuration on network devices.
 - :mod:`Network ACL state <salt.states.netacl>` - Manage the firewall
   configuration. It only requires writing the pillar structure correctly!
+- :mod:`NAPALM YANG execution module <salt.modules.napalm_yang_mod>` - Parse,
+  generate and load native device configuration in a standard way,
+  using the OpenConfig/IETF models. This module cotains also helpers for
+  the states.
 - :mod:`NET finder <salt.runners.net>` - Runner to find details easily and
   fast. It's smart enough to know what you are looking for. It will search
   in the details of the network interfaces, IP addresses, MAC address tables,
   ARP tables and LLDP neighbors.
 - :mod:`BGP finder <salt.runners.bgp>` - Runner to search BGP neighbors details.
+- :mod:`NAPALM syslog <salt.engines.napalm_syslog>` - Engine to import events
+  from the napalm-logs library into the Salt event bus. The events are based
+  on the syslog messages from the network devices and structured following
+  the OpenConfig/IETF YANG models.
+
+New functions:
+
+- :mod:`Configuration getter <salt.modules.napalm_network.config>` - Return
+  the whole configuration of the network device.
+- :mod:`Optics getter <salt.modules.napalm_network.optics>` - Fetches
+  the power usage on the various transceivers installed on the network device
+  (in dBm).
 
 New grains: :mod:`Host <salt.grains.napalm.host>`,
 :mod:`Username <salt.grains.napalm.username>` and
@@ -372,10 +388,12 @@ New SSH Cache Roster
 ====================
 
 The :mod:`SSH cache Roster <salt.roster.cache>` has been rewritten from scratch to increase its usefulness.
-The new roster supports all minion matchers, so it is now possible to target minions identically through `salt` and `salt-ssh`.
-The new configuration syntax allows for flexible combinations of arbitrary grains, pillar and mine data.
-This applies not just for the `host` of a minion, but also for other configuration data.
-The new release is also fully IPv4 and IPv6 enabled and even allows for the selection of certain CIDR ranges for connecting.
+The new roster supports all minion matchers,
+so it is now possible to target minions identically through `salt` and `salt-ssh`.
+
+Using the new ``roster_order`` configuration syntax it's now possible to compose a roster out of any combination
+of grains, pillar and mine data and even Salt SDB URLs.
+The new release is also fully IPv4 and IPv6 enabled and even has support for CIDR ranges.
 
 Deprecations
 ============

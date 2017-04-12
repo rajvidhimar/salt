@@ -7,7 +7,7 @@ Validate the boto_iam module
 from __future__ import absolute_import
 
 # Import Salt Testing libs
-import tests.integration as integration
+from tests.support.case import ModuleCase
 from tests.support.unit import skipIf
 
 # Import 3rd-party libs
@@ -33,10 +33,10 @@ except ImportError:
     BOTO_NOT_CONFIGURED,
     'Please setup boto AWS credentials before running boto integration tests.'
 )
-class BotoIAMTest(integration.ModuleCase):
+class BotoIAMTest(ModuleCase):
 
     def test_get_account_id(self):
         ret = self.run_function('boto_iam.get_account_id')
         # The AWS account ID is a 12-digit number.
         # http://docs.aws.amazon.com/general/latest/gr/acct-identifiers.html
-        self.assertRegexpMatches(ret, r'^\d{12}$')
+        self.assertRegex(ret, r'^\d{12}$')

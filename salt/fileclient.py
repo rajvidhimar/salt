@@ -645,7 +645,7 @@ class Client(object):
                 dest_tmp = "{0}.part".format(dest)
                 # We need an open filehandle to use in the on_chunk callback,
                 # that's why we're not using a with clause here.
-                destfp = salt.utils.fopen(dest_tmp, 'wb')
+                destfp = salt.utils.fopen(dest_tmp, 'wb')  # pylint: disable=resource-leakage
 
                 def on_chunk(chunk):
                     if write_body[0]:
@@ -1151,7 +1151,7 @@ class RemoteClient(Client):
                     return False
             # We need an open filehandle here, that's why we're not using a
             # with clause:
-            fn_ = salt.utils.fopen(dest, 'wb+')
+            fn_ = salt.utils.fopen(dest, 'wb+')  # pylint: disable=resource-leakage
         else:
             log.debug('No dest file found')
 
@@ -1163,7 +1163,7 @@ class RemoteClient(Client):
             data = self.channel.send(load, raw=True)
             if six.PY3:
                 # Sometimes the source is local (eg when using
-                # 'salt.filesystem.FSChan'), in which case the keys are
+                # 'salt.fileserver.FSChan'), in which case the keys are
                 # already strings. Sometimes the source is remote, in which
                 # case the keys are bytes due to raw mode. Standardize on
                 # strings for the top-level keys to simplify things.

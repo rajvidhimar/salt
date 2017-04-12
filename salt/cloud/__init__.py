@@ -41,9 +41,12 @@ from salt.template import compile_template
 
 # Import third party libs
 try:
-    import Crypto.Random
+    import Cryptodome.Random
 except ImportError:
-    pass  # pycrypto < 2.1
+    try:
+        import Crypto.Random
+    except ImportError:
+        pass  # pycrypto < 2.1
 import yaml
 import salt.ext.six as six
 from salt.ext.six.moves import input  # pylint: disable=import-error,redefined-builtin
@@ -1400,8 +1403,8 @@ class Cloud(object):
         mapped_providers = self.map_providers_parallel()
         profile_details = self.opts['profiles'][profile]
         vms = {}
-        for prov in mapped_providers:
-            prov_name = mapped_providers[prov].keys()[0]
+        for prov, val in six.iteritems(mapped_providers):
+            prov_name = next(iter(val))
             for node in mapped_providers[prov][prov_name]:
                 vms[node] = mapped_providers[prov][prov_name][node]
                 vms[node]['provider'] = prov

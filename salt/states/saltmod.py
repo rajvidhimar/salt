@@ -72,6 +72,7 @@ def state(name,
         saltenv=None,
         test=False,
         pillar=None,
+        pillarenv=None,
         expect_minions=True,
         fail_minions=None,
         allow_fail=0,
@@ -123,6 +124,11 @@ def state(name,
 
     pillar
         Pass the ``pillar`` kwarg through to the state function
+
+    pillarenv
+        The pillar environment to grab pillars from
+
+        .. versionadded:: Nitrogen
 
     saltenv
         The default salt environment to pull sls files from
@@ -239,7 +245,11 @@ def state(name,
     if pillar:
         cmd_kw['kwarg']['pillar'] = pillar
 
-    if __opts__.get('pillarenv'):
+    # If pillarenv is directly defined, use it
+    if pillarenv:
+        cmd_kw['kwarg']['pillarenv'] = pillarenv
+    # Use pillarenv if it's passed from __opts__ (via state.orchestrate for example)
+    elif __opts__.get('pillarenv'):
         cmd_kw['kwarg']['pillarenv'] = __opts__['pillarenv']
 
     cmd_kw['kwarg']['saltenv'] = __env__
@@ -295,6 +305,11 @@ def state(name,
             'string. Ignored.'
         )
         fail_minions = ()
+
+    if not cmd_ret and expect_minions:
+        state_ret['result'] = False
+        state_ret['comment'] = 'No minions returned'
+        return state_ret
 
     for minion, mdata in six.iteritems(cmd_ret):
         if mdata.get('out', '') != 'highstate':

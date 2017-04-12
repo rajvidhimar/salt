@@ -66,9 +66,13 @@ if salt.utils.is_windows():
     # chance of working.
     _DFLT_IPC_MODE = 'tcp'
     _MASTER_TRIES = -1
+    # This needs to be SYSTEM in order for salt-master to run as a Service
+    # Otherwise, it will not respond to CLI calls
+    _MASTER_USER = 'SYSTEM'
 else:
     _DFLT_IPC_MODE = 'ipc'
     _MASTER_TRIES = 1
+    _MASTER_USER = salt.utils.get_user()
 
 
 def _gather_buffer_space():
@@ -978,6 +982,14 @@ VALID_OPTS = {
 
     # Minion data cache driver (one of satl.cache.* modules)
     'cache': str,
+    # Enables a fast in-memory cache booster and sets the expiration time.
+    'memcache_expire_seconds': int,
+    # Set a memcache limit in items (bank + key) per cache storage (driver + driver_opts).
+    'memcache_max_items': int,
+    # Each time a cache storage got full cleanup all the expired items not just the oldest one.
+    'memcache_full_cleanup': bool,
+    # Enable collecting the memcache stats and log it on `debug` log level.
+    'memcache_debug': bool,
 
     # Thin and minimal Salt extra modules
     'thin_extra_mods': str,
@@ -1285,7 +1297,7 @@ DEFAULT_MASTER_OPTS = {
     'zmq_backlog': 1000,
     'pub_hwm': 1000,
     'auth_mode': 1,
-    'user': salt.utils.get_user(),
+    'user': _MASTER_USER,
     'worker_threads': 5,
     'sock_dir': os.path.join(salt.syspaths.SOCK_DIR, 'master'),
     'ret_port': 4506,
@@ -1558,6 +1570,10 @@ DEFAULT_MASTER_OPTS = {
     'python2_bin': 'python2',
     'python3_bin': 'python3',
     'cache': 'localfs',
+    'memcache_expire_seconds': 0,
+    'memcache_max_items': 1024,
+    'memcache_full_cleanup': False,
+    'memcache_debug': False,
     'thin_extra_mods': '',
     'min_extra_mods': '',
     'ssl': None,

@@ -808,6 +808,104 @@ def mac(address='', interface='', vlan=0, **kwargs):  # pylint: disable=unused-a
     return proxy_output
 
 
+@proxy_napalm_wrap
+def config(source=None, **kwargs):  # pylint: disable=unused-argument
+    '''
+    .. versionadded:: Nitrogen
+
+    Return the whole configuration of the network device.
+    By default, it will return all possible configuration
+    sources supported by the network device.
+    At most, there will be:
+
+    - running config
+    - startup config
+    - candidate config
+
+    To return only one of the configurations, you can use
+    the ``source`` argument.
+
+    source (optional)
+        Which configuration type you want to display, default is all of them.
+
+        Options:
+
+        - running
+        - candidate
+        - startup
+
+    :return:
+        The object returned is a dictionary with the following keys:
+
+        - running (string): Representation of the native running configuration.
+        - candidate (string): Representation of the native candidate configuration.
+            If the device doesnt differentiate between running and startup
+            configuration this will an empty string.
+        - startup (string): Representation of the native startup configuration.
+            If the device doesnt differentiate between running and startup
+            configuration this will an empty string.
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' net.config
+        salt '*' net.config source=candidate
+    '''
+    return salt.utils.napalm.call(
+        napalm_device,  # pylint: disable=undefined-variable
+        'get_config',
+        **{
+            'retrieve': source
+        }
+    )
+
+
+@proxy_napalm_wrap
+def optics(**kwargs):  # pylint: disable=unused-argument
+    '''
+    .. versionadded:: Nitrogen
+
+    Fetches the power usage on the various transceivers installed
+    on the network device (in dBm), and returns a view that conforms with the
+    OpenConfig model openconfig-platform-transceiver.yang.
+
+    :return:
+        Returns a dictionary where the keys are as listed below:
+            * intf_name (unicode)
+                * physical_channels
+                    * channels (list of dicts)
+                        * index (int)
+                        * state
+                            * input_power
+                                * instant (float)
+                                * avg (float)
+                                * min (float)
+                                * max (float)
+                            * output_power
+                                * instant (float)
+                                * avg (float)
+                                * min (float)
+                                * max (float)
+                            * laser_bias_current
+                                * instant (float)
+                                * avg (float)
+                                * min (float)
+                                * max (float)
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' net.optics
+    '''
+    return salt.utils.napalm.call(
+        napalm_device,  # pylint: disable=undefined-variable
+        'get_optics',
+        **{
+        }
+    )
+
 # <---- Call NAPALM getters --------------------------------------------------------------------------------------------
 
 # ----- Configuration specific functions ------------------------------------------------------------------------------>
@@ -912,7 +1010,8 @@ def load_config(filename=None,
     loaded_config = None
     if debug:
         if filename:
-            loaded_config = open(filename).read()
+            with salt.utils.fopen(filename) as rfh:
+                loaded_config = rfh.read()
         else:
             loaded_config = text
     return _config_logic(napalm_device,  # pylint: disable=undefined-variable
@@ -1256,7 +1355,8 @@ def load_template(template_name,
                     _loaded['result'] = False
                     _loaded['comment'] = 'Error while rendering the template.'
                     return _loaded
-                _rendered = open(_temp_tpl_file).read()
+                with salt.utils.fopen(_temp_tpl_file) as rfh:
+                    _rendered = rfh.read()
                 __salt__['file.remove'](_temp_tpl_file)
             else:
                 return _loaded  # exit

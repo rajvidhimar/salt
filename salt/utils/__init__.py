@@ -17,6 +17,7 @@ import json
 import logging
 import numbers
 import os
+import posixpath
 import random
 import re
 import shlex
@@ -40,7 +41,6 @@ from salt.ext.six.moves.urllib.parse import urlparse  # pylint: disable=no-name-
 # pylint: disable=redefined-builtin
 from salt.ext.six.moves import range
 from salt.ext.six.moves import zip
-from salt.ext.six.moves import map
 from stat import S_IMODE
 # pylint: enable=import-error,redefined-builtin
 
@@ -912,21 +912,32 @@ def backup_minion(path, bkroot):
         os.chmod(bkpath, fstat.st_mode)
 
 
-def path_join(*parts):
+def path_join(*parts, **kwargs):
     '''
     This functions tries to solve some issues when joining multiple absolute
     paths on both *nix and windows platforms.
 
     See tests/unit/utils/path_join_test.py for some examples on what's being
     talked about here.
+
+    The "use_posixpath" kwarg can be be used to force joining using poxixpath,
+    which is useful for Salt fileserver paths on Windows masters.
     '''
     if six.PY3:
         new_parts = []
         for part in parts:
             new_parts.append(to_str(part))
         parts = new_parts
+
+    kwargs = salt.utils.clean_kwargs(**kwargs)
+    use_posixpath = kwargs.pop('use_posixpath', False)
+    if kwargs:
+        invalid_kwargs(kwargs)
+
+    pathlib = posixpath if use_posixpath else os.path
+
     # Normalize path converting any os.sep as needed
-    parts = [os.path.normpath(p) for p in parts]
+    parts = [pathlib.normpath(p) for p in parts]
 
     try:
         root = parts.pop(0)
@@ -937,14 +948,9 @@ def path_join(*parts):
     if not parts:
         ret = root
     else:
-        if is_windows():
-            if len(root) == 1:
-                root += ':'
-            root = root.rstrip(os.sep) + os.sep
-
         stripped = [p.lstrip(os.sep) for p in parts]
         try:
-            ret = os.path.join(root, *stripped)
+            ret = pathlib.join(root, *stripped)
         except UnicodeDecodeError:
             # This is probably Python 2 and one of the parts contains unicode
             # characters in a bytestring. First try to decode to the system
@@ -954,13 +960,13 @@ def path_join(*parts):
             except NameError:
                 enc = sys.stdin.encoding or sys.getdefaultencoding()
             try:
-                ret = os.path.join(root.decode(enc),
+                ret = pathlib.join(root.decode(enc),
                                    *[x.decode(enc) for x in stripped])
             except UnicodeDecodeError:
                 # Last resort, try UTF-8
-                ret = os.path.join(root.decode('UTF-8'),
+                ret = pathlib.join(root.decode('UTF-8'),
                                    *[x.decode('UTF-8') for x in stripped])
-    return os.path.normpath(ret)
+    return pathlib.normpath(ret)
 
 
 def pem_finger(path=None, key=None, sum_type='sha256'):
@@ -1336,7 +1342,7 @@ def fopen(*args, **kwargs):
     if six.PY3 and not binary and not kwargs.get('newline', None):
         kwargs['newline'] = ''
 
-    fhandle = open(*args, **kwargs)
+    fhandle = open(*args, **kwargs)  # pylint: disable=resource-leakage
 
     if is_fcntl_available():
         # modify the file descriptor on systems with fcntl
@@ -1868,7 +1874,100 @@ def gen_state_tag(low):
     return '{0[state]}_|-{0[__id__]}_|-{0[name]}_|-{0[fun]}'.format(low)
 
 
-def check_state_result(running, recurse=False):
+def search_onfail_requisites(sid, highstate):
+    """
+    For a particular low chunk, search relevant onfail related
+    states
+    """
+    onfails = []
+    if '_|-' in sid:
+        st = salt.state.split_low_tag(sid)
+    else:
+        st = {'__id__': sid}
+    for fstate, fchunks in six.iteritems(highstate):
+        if fstate == st['__id__']:
+            continue
+        else:
+            for mod_, fchunk in six.iteritems(fchunks):
+                if (
+                    not isinstance(mod_, six.string_types) or
+                    mod_.startswith('__')
+                ):
+                    continue
+                else:
+                    if not isinstance(fchunk, list):
+                        continue
+                    else:
+                        for fdata in fchunk:
+                            if not isinstance(fdata, dict):
+                                continue
+                            # bydefault onfail will fail, but you can
+                            # set onfail_stop: False to prevent the highstate
+                            # to stop if you handle it
+                            if fdata.get('onfail_stop', True):
+                                continue
+                            for knob, fvalue in six.iteritems(fdata):
+                                if knob != 'onfail':
+                                    continue
+                                for freqs in fvalue:
+                                    for fmod, fid in six.iteritems(freqs):
+                                        if not (
+                                            fid == st['__id__'] and
+                                            fmod == st.get('state', fmod)
+                                        ):
+                                            continue
+                                        onfails.append((fstate, mod_, fchunk))
+    return onfails
+
+
+def check_onfail_requisites(state_id, state_result, running, highstate):
+    '''
+    When a state fail and is part of a highstate, check
+    if there is onfail requisites.
+    When we find onfail requisites, we will consider the state failed
+    only if at least one of those onfail requisites also failed
+
+    Returns:
+
+        True: if onfail handlers suceeded
+        False: if one on those handler failed
+        None: if the state does not have onfail requisites
+
+    '''
+    nret = None
+    if (
+        state_id and state_result and
+        highstate and isinstance(highstate, dict)
+    ):
+        onfails = search_onfail_requisites(state_id, highstate)
+        if onfails:
+            for handler in onfails:
+                fstate, mod_, fchunk = handler
+                ofresult = True
+                for rstateid, rstate in six.iteritems(running):
+                    if '_|-' in rstateid:
+                        st = salt.state.split_low_tag(rstateid)
+                    # in case of simple state, try to guess
+                    else:
+                        id_ = rstate.get('__id__', rstateid)
+                        if not id_:
+                            raise ValueError('no state id')
+                        st = {'__id__': id_, 'state': mod_}
+                    if mod_ == st['state'] and fstate == st['__id__']:
+                        ofresult = rstate.get('result', _empty)
+                        if ofresult in [False, True]:
+                            nret = ofresult
+                        if ofresult is False:
+                            # as soon as we find an errored onfail, we stop
+                            break
+                # consider that if we parsed onfailes without changing
+                # the ret, that we have failed
+                if nret is None:
+                    nret = False
+    return nret
+
+
+def check_state_result(running, recurse=False, highstate=None):
     '''
     Check the total return value of the run and determine if the running
     dict has any issues
@@ -1880,7 +1979,7 @@ def check_state_result(running, recurse=False):
         return False
 
     ret = True
-    for state_result in six.itervalues(running):
+    for state_id, state_result in six.iteritems(running):
         if not recurse and not isinstance(state_result, dict):
             ret = False
         if ret and isinstance(state_result, dict):
@@ -1889,7 +1988,13 @@ def check_state_result(running, recurse=False):
                 ret = False
             # only override return value if we are not already failed
             elif result is _empty and isinstance(state_result, dict) and ret:
-                ret = check_state_result(state_result, recurse=True)
+                ret = check_state_result(
+                    state_result, recurse=True, highstate=highstate)
+        # if we detect a fail, check for onfail requisites
+        if not ret:
+            # ret can be None in case of no onfail reqs, recast it to bool
+            ret = bool(check_onfail_requisites(state_id, state_result,
+                                               running, highstate))
         # return as soon as we got a failure
         if not ret:
             break
