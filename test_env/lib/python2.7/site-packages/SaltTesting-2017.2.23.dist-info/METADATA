@@ -1,0 +1,27 @@
+Metadata-Version: 2.0
+Name: SaltTesting
+Version: 2017.2.23
+Summary: Required testing tools needed in the several SaltStack projects.
+Home-page: https://github.com/saltstack/salt-testing
+Author: Pedro Algarvio
+Author-email: pedro@algarvio.me
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Information Technology
+Classifier: Intended Audience :: System Administrators
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: POSIX :: Linux
+Requires-Dist: psutil
+Requires-Dist: six
+Provides-Extra: GitHub
+Requires-Dist: requests (>=2.4.2); extra == 'GitHub'
+
+UNKNOWN
+
+

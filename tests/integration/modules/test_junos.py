@@ -205,14 +205,14 @@ class TestJunosModule(unittest.TestCase):
         self.assertTrue('Could not load configuration due to error' in result['dev']['message'])
         self.assertFalse(result['dev']['out'])
 
-    def test_set_hostname_commit_exception(self):
-        result = self.caller.cmd('dev', 'junos.set_hostname', ['test-name'], kwarg={'confirm': 0.1})
-        self.assertTrue('Successfully loaded host-name but commit failed with' in result['dev']['message'])
-        self.assertFalse(result['dev']['out'])
-        self.cu.lock()
-        self.cu.load('set system host-name re0')
-        self.cu.commit()
-        self.cu.unlock()
+    # def test_set_hostname_commit_exception(self):
+    #     result = self.caller.cmd('dev', 'junos.set_hostname', ['test-name'], kwarg={'confirm': 0.1})
+    #     self.assertTrue('Successfully loaded host-name but commit failed with' in result['dev']['message'])
+    #     self.assertFalse(result['dev']['out'])
+    #     self.cu.lock()
+    #     self.cu.load('set system host-name re0')
+    #     self.cu.commit()
+    #     self.cu.unlock()
 
     def test_commit(self):
         self.cu.lock()

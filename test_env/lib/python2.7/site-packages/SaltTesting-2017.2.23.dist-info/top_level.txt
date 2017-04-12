@@ -1,0 +1,7 @@
+salttesting
+salttesting/cherrypytest
+salttesting/ext
+salttesting/parser
+salttesting/pylintplugins
+salttesting/pylintplugins/py3modernize
+salttesting/pylintplugins/py3modernize/fixes

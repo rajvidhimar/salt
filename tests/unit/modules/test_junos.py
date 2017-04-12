@@ -27,7 +27,6 @@ except ImportError:
 # Import salt modules
 import salt.modules.junos as junos
 
-
 @skipIf(not HAS_JUNOS, 'Missing dependencies')
 class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
 
