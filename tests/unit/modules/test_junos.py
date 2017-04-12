@@ -299,7 +299,7 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
             self, mock_commit_check):
         mock_commit_check.side_effect = self.raise_exception
         ret = dict()
-        ret['message'] = 'Commit check failed with "Test exception"'
+        ret['message'] = 'Could not commit check due to error "Test exception"'
         ret['out'] = False
         self.assertEqual(junos.set_hostname('test-name'), ret)
 
@@ -380,7 +380,7 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
     def test_commit_raise_commit_check_exception(self, mock_commit_check):
         mock_commit_check.side_effect = self.raise_exception
         ret = dict()
-        ret['message'] = 'Commit check failed due to "Test exception"'
+        ret['message'] = 'Could not perform commit check due to "Test exception"'
         ret['out'] = False
         self.assertEqual(junos.commit(), ret)
 
@@ -599,7 +599,7 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
                                              mock_commit_check):
         mock_commit_check.side_effect = self.raise_exception
         ret = dict()
-        ret['message'] = 'Commit check failed with "Test exception"'
+        ret['message'] = 'Could not commit check due to "Test exception"'
         ret['out'] = False
         self.assertEqual(junos.rollback(), ret)
 
