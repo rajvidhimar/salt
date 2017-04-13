@@ -407,7 +407,7 @@ def commit(**kwargs):
 
 def rollback(id=0, **kwargs):
     '''
-    To rollback the last committed configuration changes
+    To rollback the last committed configuration changes and commit the same.
 
     Usage:
 
@@ -1283,6 +1283,7 @@ def load(path=None, **kwargs):
 
     return ret
 
+
 def commit_check():
     """
 
@@ -1306,4 +1307,3 @@ def commit_check():
         ret['out'] = False
 
     return ret
-
