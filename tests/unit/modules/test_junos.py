@@ -20,12 +20,14 @@ try:
     from jnpr.junos.utils.config import Config
     from jnpr.junos.utils.sw import SW
     from jnpr.junos.device import Device
+    from jnpr.junos.exception import LockError, UnlockError
     HAS_JUNOS = True
 except ImportError:
     HAS_JUNOS = False
 
 # Import salt modules
 import salt.modules.junos as junos
+
 
 @skipIf(not HAS_JUNOS, 'Missing dependencies')
 class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
@@ -60,6 +62,12 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
 
     def raise_exception(self, *args, **kwargs):
         raise Exception('Test exception')
+
+    def raise_lock_error(self):
+        raise LockError('mock-error')
+
+    def raise_unlock_error(self):
+        raise UnlockError('mock-error')
 
     def get_facts(self):
         facts = {'2RE': True,
@@ -366,6 +374,16 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
         self.assertEqual(junos.set_hostname('test-name'), ret)
 
     @patch('jnpr.junos.utils.config.Config.commit_check')
+    @patch('salt.modules.junos.rollback')
+    def test_set_hostname_fail_commit_check(
+        self, mock_rollback, mock_commit_check):
+        mock_commit_check.return_value = False
+        ret = dict()
+        ret['out'] = False
+        ret['message'] = 'Successfully loaded host-name but pre-commit check failed.'
+        self.assertEqual(junos.set_hostname('test'), ret)
+
+    @patch('jnpr.junos.utils.config.Config.commit_check')
     @patch('jnpr.junos.utils.config.Config.commit')
     def test_commit_without_args(self, mock_commit, mock_commit_check):
         mock_commit.return_value = True
@@ -431,6 +449,25 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
         mock_commit.assert_called_with(
             comment='comitted via salt', detail=True, confirm=3)
 
+    @patch('jnpr.junos.utils.config.Config.commit_check')
+    @patch('jnpr.junos.utils.config.Config.commit')
+    def test_commit_pyez_commit_returning_false(
+            self, mock_commit, mock_commit_check):
+        mock_commit.return_value = False
+        mock_commit_check.return_value = True
+        ret = dict()
+        ret['message'] = 'Commit failed.'
+        ret['out'] = False
+        self.assertEqual(junos.commit(), ret)
+
+    @patch('jnpr.junos.utils.config.Config.commit_check')
+    def test_commit_pyez_commit_check_returns_false(self, mock_commit_check):
+        mock_commit_check.return_value = False
+        ret = dict()
+        ret['out'] = False
+        ret['message'] = 'Pre-commit check failed.'
+        self.assertEqual(junos.commit(), ret)
+
     @patch('jnpr.junos.utils.config.Config.rollback')
     def test_rollback_exception(self, mock_rollback):
         mock_rollback.side_effect = self.raise_exception
@@ -449,6 +486,14 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
         ret = dict()
         ret['message'] = 'Rollback successful'
         ret['out'] = True
+        self.assertEqual(junos.rollback(), ret)
+
+    @patch('jnpr.junos.utils.config.Config.rollback')
+    def test_rollback_without_args_fail(self, mock_rollback):
+        mock_rollback.return_value = False
+        ret = dict()
+        ret['message'] = 'Rollback failed'
+        ret['out'] = False
         self.assertEqual(junos.rollback(), ret)
 
     @patch('jnpr.junos.utils.config.Config.commit_check')
@@ -614,6 +659,17 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
         ret = dict()
         ret['message'] = \
             'Rollback successful but commit failed with error "Test exception"'
+        ret['out'] = False
+        self.assertEqual(junos.rollback(), ret)
+
+    @patch('jnpr.junos.utils.config.Config.commit_check')
+    @patch('jnpr.junos.utils.config.Config.rollback')
+    def test_rollback_commit_check_fails(self,
+                                         mock_rollback,
+                                         mock_commit_check):
+        mock_commit_check.return_value = False
+        ret = dict()
+        ret['message'] = 'Rollback succesfull but pre-commit check failed.'
         ret['out'] = False
         self.assertEqual(junos.rollback(), ret)
 
@@ -1645,3 +1701,263 @@ class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
             junos.rpc('get-chassis-inventory', '/path/to/file')
             handle = m()
             handle.write.assert_called_with('xml rpc reply')
+
+    @patch('salt.modules.junos.Config.lock')
+    def test_lock(self, mock_load):
+        ret = dict()
+        ret['message'] = 'Successfully locked the configuration.'
+        ret['out'] = True
+        self.assertEqual(junos.lock(), ret)
+
+    @patch('jnpr.junos.utils.config.Config.lock')
+    def test_lock_exception(self, mock_lock):
+        mock_lock.side_effect = self.raise_lock_error
+        ret = dict()
+        ret['message'] = 'Could not gain lock due to : "LockError"'
+        ret['out'] = False
+        self.assertEqual(junos.lock(), ret)
+
+    @patch('salt.modules.junos.Config.unlock')
+    def test_unlock(self, mock_unlock):
+        ret = dict()
+        ret['message'] = 'Successfully unlocked the configuration.'
+        ret['out'] = True
+        self.assertEqual(junos.unlock(), ret)
+
+    @patch('salt.modules.junos.Config.unlock')
+    def test_unlock_exception(self, mock_unlock):
+        mock_unlock.side_effect = self.raise_unlock_error
+        ret = dict()
+        ret['message'] = 'Could not unlock configuration due to : "UnlockError"'
+        ret['out'] = False
+        self.assertEqual(junos.unlock(), ret)
+
+    def test_load_without_args(self):
+        ret = dict()
+        ret['message'] = \
+            'Please provide the salt path where the configuration is present'
+        ret['out'] = False
+        self.assertEqual(junos.load(), ret)
+
+    @patch('os.path.isfile')
+    def test_load_cp_fails(self, mock_isfile):
+        mock_isfile.return_value = False
+        ret = dict()
+        ret['message'] = 'Invalid file path.'
+        ret['out'] = False
+        self.assertEqual(junos.load('path'), ret)
+
+    @patch('os.path.isfile')
+    @patch('os.path.getsize')
+    def test_load_file_cp_fails(self, mock_getsize, mock_isfile):
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 0
+        ret = dict()
+        ret['message'] = 'Template failed to render'
+        ret['out'] = False
+        self.assertEqual(junos.load('path'), ret)
+
+    @patch('jnpr.junos.utils.config.Config.load')
+    @patch('salt.modules.junos.safe_rm')
+    @patch('salt.modules.junos.files.mkstemp')
+    @patch('os.path.isfile')
+    @patch('os.path.getsize')
+    def test_load(
+            self,
+            mock_getsize,
+            mock_isfile,
+            mock_mkstemp,
+            mock_safe_rm,
+            mock_load):
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 10
+        mock_mkstemp.return_value = 'test/path/config'
+
+        ret = dict()
+        ret['message'] = 'Successfully loaded the configuration.'
+        ret['out'] = True
+        self.assertEqual(junos.load('actual/path/config.set'), ret)
+        mock_load.assert_called_with(path='test/path/config', format='set')
+
+    @patch('jnpr.junos.utils.config.Config.load')
+    @patch('salt.modules.junos.safe_rm')
+    @patch('salt.modules.junos.files.mkstemp')
+    @patch('os.path.isfile')
+    @patch('os.path.getsize')
+    def test_load_xml_file(
+            self,
+            mock_getsize,
+            mock_isfile,
+            mock_mkstemp,
+            mock_safe_rm,
+            mock_load):
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 10
+        mock_mkstemp.return_value = 'test/path/config'
+
+        ret = dict()
+        ret['message'] = 'Successfully loaded the configuration.'
+        ret['out'] = True
+        self.assertEqual(junos.load('actual/path/config.xml'), ret)
+        mock_load.assert_called_with(path='test/path/config', format='xml')
+
+    @patch('jnpr.junos.utils.config.Config.load')
+    @patch('salt.modules.junos.safe_rm')
+    @patch('salt.modules.junos.files.mkstemp')
+    @patch('os.path.isfile')
+    @patch('os.path.getsize')
+    def test_load_text_file(
+            self,
+            mock_getsize,
+            mock_isfile,
+            mock_mkstemp,
+            mock_safe_rm,
+            mock_load):
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 10
+        mock_mkstemp.return_value = 'test/path/config'
+
+        ret = dict()
+        ret['message'] = 'Successfully loaded the configuration.'
+        ret['out'] = True
+        self.assertEqual(junos.load('actual/path/config'), ret)
+        mock_load.assert_called_with(path='test/path/config', format='text')
+
+    @patch('jnpr.junos.utils.config.Config.load')
+    @patch('salt.modules.junos.safe_rm')
+    @patch('salt.modules.junos.files.mkstemp')
+    @patch('os.path.isfile')
+    @patch('os.path.getsize')
+    def test_load_replace(
+            self,
+            mock_getsize,
+            mock_isfile,
+            mock_mkstemp,
+            mock_safe_rm,
+            mock_load):
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 10
+        mock_mkstemp.return_value = 'test/path/config'
+
+        args = {'__pub_user': 'root', '__pub_arg': [{'replace': True}],
+                'replace': True, '__pub_fun': 'junos.install_config',
+                '__pub_jid': '20170222213858582619', '__pub_tgt': 'mac_min',
+                '__pub_tgt_type': 'glob', '__pub_ret': ''}
+
+        ret = dict()
+        ret['message'] = 'Successfully loaded the configuration.'
+        ret['out'] = True
+        self.assertEqual(
+            junos.load(
+                'actual/path/config.set',
+                **args),
+            ret)
+        mock_load.assert_called_with(
+            path='test/path/config',
+            format='set',
+            merge=False)
+
+    @patch('jnpr.junos.utils.config.Config.load')
+    @patch('salt.modules.junos.safe_rm')
+    @patch('salt.modules.junos.files.mkstemp')
+    @patch('os.path.isfile')
+    @patch('os.path.getsize')
+    def test_load_overwrite(
+            self,
+            mock_getsize,
+            mock_isfile,
+            mock_mkstemp,
+            mock_safe_rm,
+            mock_load):
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 10
+        mock_mkstemp.return_value = 'test/path/config'
+
+        args = {'__pub_user': 'root', '__pub_arg': [{'overwrite': True}],
+                'overwrite': True, '__pub_fun': 'junos.install_config',
+                '__pub_jid': '20170222213858582619', '__pub_tgt': 'mac_min',
+                '__pub_tgt_type': 'glob', '__pub_ret': ''}
+
+        ret = dict()
+        ret['message'] = 'Successfully loaded the configuration.'
+        ret['out'] = True
+        self.assertEqual(
+            junos.load(
+                'actual/path/config.xml',
+                **args),
+            ret)
+        mock_load.assert_called_with(
+            path='test/path/config',
+            format='xml',
+            overwrite=True)
+
+    @patch('jnpr.junos.utils.config.Config.load')
+    @patch('salt.modules.junos.safe_rm')
+    @patch('salt.modules.junos.files.mkstemp')
+    @patch('os.path.isfile')
+    @patch('os.path.getsize')
+    def test_load_overwrite_false(
+            self,
+            mock_getsize,
+            mock_isfile,
+            mock_mkstemp,
+            mock_safe_rm,
+            mock_load):
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 10
+        mock_mkstemp.return_value = 'test/path/config'
+
+        args = {'__pub_user': 'root', '__pub_arg': [{'overwrite': False}],
+                'overwrite': False, '__pub_fun': 'junos.install_config',
+                '__pub_jid': '20170222213858582619', '__pub_tgt': 'mac_min',
+                '__pub_tgt_type': 'glob', '__pub_ret': ''}
+
+        ret = dict()
+        ret['message'] = 'Successfully loaded the configuration.'
+        ret['out'] = True
+        self.assertEqual(
+            junos.load(
+                'actual/path/config',
+                **args),
+            ret)
+        mock_load.assert_called_with(
+            path='test/path/config', format='text', merge=True)
+
+    @patch('jnpr.junos.utils.config.Config.load')
+    @patch('salt.modules.junos.safe_rm')
+    @patch('salt.modules.junos.files.mkstemp')
+    @patch('os.path.isfile')
+    @patch('os.path.getsize')
+    def test_load_exception(
+            self,
+            mock_getsize,
+            mock_isfile,
+            mock_mkstemp,
+            mock_safe_rm,
+            mock_load):
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 10
+        mock_mkstemp.return_value = 'test/path/config'
+        mock_load.side_effect = self.raise_exception
+        ret = dict()
+        ret['message'] = 'Could not load configuration due to : "Test exception"'
+        ret['format'] = 'set'
+        ret['out'] = False
+        self.assertEqual(
+            junos.load(
+                path='actual/path/config.set'), ret)
+
+    @patch('salt.modules.junos.Config.commit_check')
+    def test_commit_check(self, mock_commit_check):
+        ret = dict()
+        ret['message'] = 'Commit check succeeded.'
+        ret['out'] = True
+        self.assertEqual(junos.commit_check(), ret)
+
+    @patch('jnpr.junos.utils.config.Config.commit_check')
+    def test_commit_check_exception(self, mock_commit_check):
+        mock_commit_check.side_effect = self.raise_exception
+        ret = dict()
+        ret['message'] = 'Commit check failed with Test exception'
+        ret['out'] = False
+        self.assertEqual(junos.commit_check(), ret)

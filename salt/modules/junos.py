@@ -308,7 +308,6 @@ def set_hostname(hostname=None, **kwargs):
             ret['out'] = False
             ret['message'] = 'Successfully loaded host-name but commit failed with "{0}"'.format(
                 exception)
-            conn.cu.rollback()
             return ret
     else:
         ret['out'] = False
