@@ -310,6 +310,7 @@ class TestJunosModule(unittest.TestCase):
         self.assertEqual(result['dev']['message'], 'Successfully unlocked the configuration.')
         self.assertTrue(result['dev']['out'])
         self.assertTrue(self.cu.lock())
+        self.cu.unlock()
 
     def test_commit_check(self):
         pass
