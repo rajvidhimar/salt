@@ -15,7 +15,7 @@ class TestJunosModule(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         self.caller = salt.client.LocalClient()
-        self.dev = Device(host='10.221.129.70', user='regress', passwd='MaRtInI')
+        self.dev = Device(host='10.221.136.250', user='regress', passwd='MaRtInI')
         self.dev.open()
         self.cu = Config(self.dev)
 
@@ -297,3 +297,19 @@ class TestJunosModule(unittest.TestCase):
         result = self.caller.cmd('dev', 'junos.shutdown')
         self.assertEqual(result['dev']['message'], 'Provide either one of the arguments: shutdown or reboot.')
         self.assertFalse(result['dev']['out'])
+
+    def test_lock_and_unlock(self):
+        result = self.caller.cmd('dev', 'junos.lock')
+        self.assertEqual(result['dev']['message'], 'Successfully locked the configuration.')
+        self.assertTrue(result['dev']['out'])
+        try:
+            self.cu.lock()
+        except Exception as e:
+            self.assertEqual(type(e).__name__, 'LockError')
+        result = self.caller.cmd('dev', 'junos.unlock')
+        self.assertEqual(result['dev']['message'], 'Successfully unlocked the configuration.')
+        self.assertTrue(result['dev']['out'])
+        self.assertTrue(self.cu.lock())
+
+    def test_commit_check(self):
+        pass

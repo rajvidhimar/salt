@@ -9,6 +9,7 @@ from __future__ import absolute_import, print_function
 from tests.support.mixins import LoaderModuleMockMixin, XMLEqualityMixin
 from tests.support.mock import patch, mock_open
 from tests.support.unit import skipIf, TestCase
+import unittest
 
 # Import 3rd-party libs
 try:
@@ -30,7 +31,7 @@ import salt.modules.junos as junos
 
 
 @skipIf(not HAS_JUNOS, 'Missing dependencies')
-class Test_Junos_Module(TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
+class Test_Junos_Module(unittest.TestCase, LoaderModuleMockMixin, XMLEqualityMixin):
 
     def setup_loader_modules(self):
         return {
