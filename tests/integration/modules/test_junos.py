@@ -7,6 +7,7 @@ from jnpr.junos import Device
 from jnpr.junos.utils.config import Config
 import os
 import time
+from lxml import etree
 
 
 @attr('functional')
@@ -313,4 +314,99 @@ class TestJunosModule(unittest.TestCase):
         self.cu.unlock()
 
     def test_commit_check(self):
+        self.cu.load('set system host-name test')
+        result = self.caller.cmd('dev', 'junos.commit_check')
+        self.assertEqual(result['dev']['message'], 'Commit check succeeded.')
+        self.assertTrue(result['dev']['out'])
+        self.cu.rollback()
+
+    def test_commit_check_exception(self):
         pass
+
+    def test_install_config_no_path(self):
+        result = self.caller.cmd('dev', 'junos.install_config')
+        self.assertEqual(result['dev']['message'], 'Please provide the salt path where the configuration is present')
+        self.assertFalse(result['dev']['out'])
+
+    def test_install_config_invalid_path(self):
+        result = self.caller.cmd('dev', 'junos.install_config', kwarg={'path': '/invalid/path'})
+        self.assertEqual(result['dev']['message'], 'Template failed to render')
+        self.assertFalse(result['dev']['out'])
+
+    def test_install_config_load_set(self):
+        result = self.caller.cmd('dev', 'junos.install_config', kwarg={'path': 'salt://test_config.set'})
+        self.assertEqual(result['dev']['message'], 'Successfully loaded and committed!')
+        self.assertTrue(result['dev']['out'])
+        try:
+            name = self.dev.cli('show configuration system host-name')
+            self.assertEqual(name, '\nhost-name test_install;\n')
+        finally:
+            self.cu.lock()
+            self.cu.load('set system host-name re0')
+            self.cu.commit()
+            self.cu.unlock()
+
+    def test_install_config_no_diff(self):
+        self.cu.lock()
+        self.cu.load('set system host-name test_install')
+        self.cu.commit()
+        self.cu.unlock()
+        result = self.caller.cmd('dev', 'junos.install_config', kwarg={'path': 'salt://test_config.set'})
+        self.assertEqual(result['dev']['message'], 'Configuration already applied!')
+        self.assertTrue(result['dev']['out'])
+        self.cu.lock()
+        self.cu.load('set system host-name re0')
+        self.cu.commit()
+        self.cu.unlock()
+
+    def test_install_config_load_xml(self):
+        result = self.caller.cmd('dev', 'junos.install_config', kwarg={'path': 'salt://test_config.xml'})
+        self.assertEqual(result['dev']['message'], 'Successfully loaded and committed!')
+        self.assertTrue(result['dev']['out'])
+        try:
+            name = self.dev.cli('show configuration system host-name')
+            self.assertEqual(name, '\nhost-name test_install_xml;\n')
+        finally:
+            self.cu.lock()
+            self.cu.load('set system host-name re0')
+            self.cu.commit()
+            self.cu.unlock()
+
+    def test_install_config_load_text(self):
+        result = self.caller.cmd('dev', 'junos.install_config', kwarg={'path': 'salt://test_config.text'})
+        self.assertEqual(result['dev']['message'], 'Successfully loaded and committed!')
+        self.assertTrue(result['dev']['out'])
+        try:
+            name = self.dev.cli('show configuration system host-name')
+            self.assertEqual(name, '\nhost-name test_install_text;\n')
+        finally:
+            self.cu.lock()
+            self.cu.load('set system host-name re0')
+            self.cu.commit()
+            self.cu.unlock()
+
+    def test_install_config_load_exception(self):
+        result = self.caller.cmd('dev', 'junos.install_config', kwarg={'path': 'salt://load_exception.text'})
+        self.assertTrue('Could not load configuration due to' in result['dev']['message'])
+        self.assertFalse(result['dev']['out'])
+
+    def test_install_config_commit_confirm(self):
+        result = self.caller.cmd('dev', 'junos.install_config', kwarg={'path': 'salt://test_config.set', 'confirm': 1})
+        self.assertEqual(result['dev']['message'], 'Successfully loaded and committed!')
+        self.assertTrue(result['dev']['out'])
+        time.sleep(70)
+        name = self.dev.cli('show configuration system host-name')
+        self.assertEqual(name, '\nhost-name re0;\n')
+
+    def test_install_config_commit_comment(self):
+        result = self.caller.cmd('dev', 'junos.install_config', kwarg={'path': 'salt://test_config.set', 'comment': 'Testing SaltStack install_config'})
+        self.assertEqual(result['dev']['message'], 'Successfully loaded and committed!')
+        self.assertTrue(result['dev']['out'])
+        try:
+            commit_history = self.dev.rpc.get_commit_information()
+            self.assertEqual(etree.tostring(commit_history.xpath('//commit-history')[0][4]), '<log>Testing SaltStack install_config</log>\n')
+        finally:
+            self.cu.lock()
+            self.cu.load('set system host-name re0')
+            self.cu.commit()
+            self.cu.unlock()
