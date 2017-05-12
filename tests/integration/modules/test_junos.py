@@ -16,7 +16,7 @@ class TestJunosModule(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         self.caller = salt.client.LocalClient()
-        self.dev = Device(host='10.221.136.250', user='regress', passwd='MaRtInI')
+        self.dev = Device(host='10.221.141.165', user='regress', passwd='MaRtInI')
         self.dev.open()
         self.cu = Config(self.dev)
 
