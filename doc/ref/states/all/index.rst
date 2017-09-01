@@ -74,6 +74,10 @@ state modules
     dellchassis
     disk
     docker
+    docker_container
+    docker_image
+    docker_network
+    docker_volume
     drac
     elasticsearch
     elasticsearch_index
@@ -128,9 +132,11 @@ state modules
     junos
     k8s
     kapacitor
+    kernelpkg
     keyboard
     keystone
     kmod
+    kubernetes
     layman
     ldap
     libcloud_dns
@@ -244,7 +250,6 @@ state modules
     stateconf
     status
     statuspage
-    stormpath_account
     supervisord
     svn
     sysctl

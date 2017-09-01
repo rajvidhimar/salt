@@ -3,18 +3,14 @@
 A REST API for Salt
 ===================
 
-.. versionadded:: 2014.7.0
-
 .. py:currentmodule:: salt.netapi.rest_cherrypy.app
 
 :depends:
-    - CherryPy Python module. Version 3.2.3 is currently recommended when
-      SSL is enabled, since this version worked the best with SSL in
-      internal testing. Versions 3.2.3 - 4.x can be used if SSL is not enabled.
-      Be aware that there is a known
-      `SSL error <https://github.com/cherrypy/cherrypy/issues/1298>`_
-      introduced in version 3.2.5. The issue was reportedly resolved with
-      CherryPy milestone 3.3, but the patch was committed for version 3.6.1.
+    - CherryPy Python module.
+
+      Note: there is a `known SSL traceback for CherryPy versions 3.2.5 through
+      3.7.x <https://github.com/cherrypy/cherrypy/issues/1298>`_. Please use
+      version 3.2.3 or the latest 10.x version instead.
 :optdepends:    - ws4py Python module for websockets support.
 :client_libraries:
     - Java: https://github.com/SUSE/salt-netapi-client
@@ -121,7 +117,7 @@ A REST API for Salt
         Enable or disable all endpoints that rely on session cookies. This can
         be useful to enforce only header-based authentication.
 
-        .. versionadded:: Nitrogen
+        .. versionadded:: 2017.7.0
 
     app : ``index.html``
         A filesystem path to an HTML file that will be served as a static file.
@@ -132,7 +128,7 @@ A REST API for Salt
         Send the custom ``X-Auth-Token`` header instead and consider disabling
         the ``enable_sessions`` setting.
 
-        .. versionchanged:: Nitrogen
+        .. versionchanged:: 2017.7.0
 
             Add a proof-of-concept JavaScript single-page app.
 
@@ -584,24 +580,32 @@ import signal
 import tarfile
 from multiprocessing import Process, Pipe
 
-# Import third-party libs
-# pylint: disable=import-error
-import cherrypy  # pylint: disable=3rd-party-module-not-gated
-import yaml
-import salt.ext.six as six
-# pylint: enable=import-error
+logger = logging.getLogger(__name__)
 
+# Import third-party libs
+# pylint: disable=import-error, 3rd-party-module-not-gated
+import cherrypy
+try:
+    from cherrypy.lib import cpstats
+except ImportError:
+    cpstats = None
+    logger.warn('Import of cherrypy.cpstats failed. '
+        'Possible upstream bug: '
+        'https://github.com/cherrypy/cherrypy/issues/1444')
+
+import yaml
+# pylint: enable=import-error, 3rd-party-module-not-gated
 
 # Import Salt libs
 import salt
 import salt.auth
 import salt.utils
 import salt.utils.event
+import salt.utils.stringutils
+from salt.ext import six
 
 # Import salt-api libs
 import salt.netapi
-
-logger = logging.getLogger(__name__)
 
 # Imports related to websocket
 try:
@@ -872,7 +876,7 @@ def hypermedia_handler(*args, **kwargs):
     try:
         response = out(ret)
         if six.PY3:
-            response = salt.utils.to_bytes(response)
+            response = salt.utils.stringutils.to_bytes(response)
         return response
     except Exception:
         msg = 'Could not serialize the return data from Salt.'
@@ -930,7 +934,7 @@ def urlencoded_processor(entity):
         entity.fp.read(fp_out=contents)
         contents.seek(0)
         body_str = contents.read()
-        body_bytes = salt.utils.to_bytes(body_str)
+        body_bytes = salt.utils.stringutils.to_bytes(body_str)
         body_bytes = six.BytesIO(body_bytes)
         body_bytes.seek(0)
         # Patch fp
@@ -1617,6 +1621,10 @@ class Keys(LowDataAdapter):
         Accepts all the same parameters as the :py:func:`key.gen_accept
         <salt.wheel.key.gen_accept>`.
 
+        .. note:: A note about ``curl``
+           Avoid using the ``-i`` flag or HTTP headers will be written and
+           produce an invalid tar file.
+
         Example partial kickstart script to bootstrap a new minion:
 
         .. code-block:: text
@@ -1914,7 +1922,7 @@ class Token(LowDataAdapter):
 
     Wraps functionality in the :py:mod:`auth Runner <salt.runners.auth>`.
 
-    .. versionadded:: Nitrogen
+    .. versionadded:: 2017.7.0
     '''
     @cherrypy.config(**{'tools.sessions.on': False})
     def POST(self, **kwargs):
@@ -2716,13 +2724,6 @@ class Stats(object):
             :status 406: |406|
         '''
         if hasattr(logging, 'statistics'):
-            # Late import
-            try:
-                from cherrypy.lib import cpstats
-            except ImportError:
-                logger.error('Import of cherrypy.cpstats failed. Possible '
-                        'upstream bug here: https://github.com/cherrypy/cherrypy/issues/1444')
-                return {}
             return cpstats.extrapolate_statistics(logging.statistics)
 
         return {}
@@ -2842,12 +2843,13 @@ class API(object):
                 'tools.trailing_slash.on': True,
                 'tools.gzip.on': True,
 
-                'tools.cpstats.on': self.apiopts.get('collect_stats', False),
-
                 'tools.html_override.on': True,
                 'tools.cors_tool.on': True,
             },
         }
+
+        if cpstats and self.apiopts.get('collect_stats', False):
+            conf['/']['tools.cpstats.on'] = True
 
         if 'favicon' in self.apiopts:
             conf['/favicon.ico'] = {

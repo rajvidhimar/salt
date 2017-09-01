@@ -3,7 +3,7 @@
 Management of Docker Containers
 
 .. versionadded:: 2015.8.0
-.. versionchanged:: Nitrogen
+.. versionchanged:: 2017.7.0
     This module has replaced the legacy docker execution module.
 
 :depends: docker_ Python module
@@ -56,7 +56,7 @@ For example:
         password: s3cr3t
 
 .. note::
-    As of the 2016.3.7, 2016.11.4, and Nitrogen releases of Salt, credentials
+    As of the 2016.3.7, 2016.11.4, and 2017.7.0 releases of Salt, credentials
     for the Docker Hub can be configured simply by specifying ``hub`` in place
     of the registry URL. In earlier releases, it is necessary to specify the
     actual registry URL for the Docker Hub (i.e.
@@ -83,14 +83,14 @@ in the ``docker-registries`` Pillar key, as well as any key ending in
         username: foo
         password: s3cr3t
 
-To login to the configured registries, use the :py:func:`dockerng.login
-<salt.modules.dockerng.login>` function. This only needs to be done once for a
+To login to the configured registries, use the :py:func:`docker.login
+<salt.modules.dockermod.login>` function. This only needs to be done once for a
 given registry, and it will store/update the credentials in
 ``~/.docker/config.json``.
 
 .. note::
-    For Salt releases before 2016.3.7 and 2016.11.4, :py:func:`dockerng.login
-    <salt.modules.dockerng.login>` is not available. Instead, Salt will try to
+    For Salt releases before 2016.3.7 and 2016.11.4, :py:func:`docker.login
+    <salt.modules.dockermod.login>` is not available. Instead, Salt will try to
     authenticate using each of your configured registries for each push/pull,
     behavior which is not correct and has been resolved in newer releases.
 
@@ -119,7 +119,7 @@ Executing Commands Within a Running Container
 
 .. note::
     With the release of Docker 1.13.1, the Execution Driver has been removed.
-    Starting in versions 2016.3.6, 2016.11.4, and Nitrogen, Salt defaults to
+    Starting in versions 2016.3.6, 2016.11.4, and 2017.7.0, Salt defaults to
     using ``docker exec`` to run commands in containers, however for older Salt
     releases it will be necessary to set the ``docker.exec_driver`` config
     option to either ``docker-exec`` or ``nsenter`` for Docker versions 1.13.1
@@ -199,12 +199,15 @@ import subprocess
 
 # Import Salt libs
 from salt.exceptions import CommandExecutionError, SaltInvocationError
-import salt.ext.six as six
+from salt.ext import six
 from salt.ext.six.moves import map  # pylint: disable=import-error,redefined-builtin
 import salt.utils
+import salt.utils.args
 import salt.utils.decorators
 import salt.utils.docker
 import salt.utils.files
+import salt.utils.path
+import salt.utils.stringutils
 import salt.utils.thin
 import salt.pillar
 import salt.exceptions
@@ -230,7 +233,7 @@ except ImportError:
     HAS_LZMA = False
 # pylint: enable=import-error
 
-HAS_NSENTER = bool(salt.utils.which('nsenter'))
+HAS_NSENTER = bool(salt.utils.path.which('nsenter'))
 
 # Set up logging
 log = logging.getLogger(__name__)
@@ -343,7 +346,7 @@ def _get_client(timeout=NOTSET, **kwargs):
             python_shell=False)
         try:
             docker_machine_json = \
-                json.loads(salt.utils.to_str(docker_machine_json))
+                json.loads(salt.utils.stringutils.to_str(docker_machine_json))
             docker_machine_tls = \
                 docker_machine_json['HostOptions']['AuthOptions']
             docker_machine_ip = docker_machine_json['Driver']['IPAddress']
@@ -389,7 +392,7 @@ def _docker_client(wrapped):
         '''
         Ensure that the client is present
         '''
-        kwargs = salt.utils.clean_kwargs(**kwargs)
+        kwargs = salt.utils.args.clean_kwargs(**kwargs)
         timeout = kwargs.pop('client_timeout', NOTSET)
         if 'docker.client' not in __context__ \
                 or not hasattr(__context__['docker.client'], 'timeout'):
@@ -421,7 +424,7 @@ def _ensure_exists(wrapped):
             raise CommandExecutionError(
                 'Container \'{0}\' does not exist'.format(name)
             )
-        return wrapped(name, *args, **salt.utils.clean_kwargs(**kwargs))
+        return wrapped(name, *args, **salt.utils.args.clean_kwargs(**kwargs))
     return wrapper
 
 
@@ -434,7 +437,7 @@ def _refresh_mine_cache(wrapped):
         '''
         refresh salt mine on exit.
         '''
-        returned = wrapped(*args, **salt.utils.clean_kwargs(**kwargs))
+        returned = wrapped(*args, **salt.utils.args.clean_kwargs(**kwargs))
         __salt__['mine.send']('docker.ps', verbose=True, all=True, host=True)
         return returned
     return wrapper
@@ -559,6 +562,21 @@ def _prep_pull():
     __context__['docker._pull_status'] = [x[:12] for x in images(all=True)]
 
 
+def _scrub_links(links, name):
+    '''
+    Remove container name from HostConfig:Links values to enable comparing
+    container configurations correctly.
+    '''
+    if isinstance(links, list):
+        ret = []
+        for l in links:
+            ret.append(l.replace('/{0}/'.format(name), '/', 1))
+    else:
+        ret = links
+
+    return ret
+
+
 def _size_fmt(num):
     '''
     Format bytes as human-readable file sizes
@@ -619,7 +637,7 @@ def _client_wrapper(attr, *args, **kwargs):
             api_events = []
             try:
                 for event in ret:
-                    api_events.append(json.loads(salt.utils.to_str(event)))
+                    api_events.append(json.loads(salt.utils.stringutils.to_str(event)))
             except Exception as exc:
                 raise CommandExecutionError(
                     'Unable to interpret API event: \'{0}\''.format(event),
@@ -767,8 +785,8 @@ def _error_detail(data, item):
 # Functions to handle docker-py client args
 def get_client_args():
     '''
-    .. versionadded:: 2016.3.6,2016.11.4,Nitrogen
-    .. versionchanged:: Nitrogen
+    .. versionadded:: 2016.3.6,2016.11.4,2017.7.0
+    .. versionchanged:: 2017.7.0
         Replaced the container config args with the ones from the API's
         ``create_container`` function.
 
@@ -852,7 +870,7 @@ def _get_create_kwargs(image,
 
 def compare_container(first, second, ignore=None):
     '''
-    .. versionadded:: Nitrogen
+    .. versionadded:: 2017.7.0
 
     Compare two containers' Config and and HostConfig and return any
     differences between the two.
@@ -884,8 +902,15 @@ def compare_container(first, second, ignore=None):
                 continue
             val1 = result1[conf_dict][item]
             val2 = result2[conf_dict].get(item)
-            if val1 != val2:
-                ret.setdefault(conf_dict, {})[item] = {'old': val1, 'new': val2}
+            if item in ('OomKillDisable',):
+                if bool(val1) != bool(val2):
+                    ret.setdefault(conf_dict, {})[item] = {'old': val1, 'new': val2}
+            else:
+                if item == 'Links':
+                    val1 = _scrub_links(val1, first)
+                    val2 = _scrub_links(val2, second)
+                if val1 != val2:
+                    ret.setdefault(conf_dict, {})[item] = {'old': val1, 'new': val2}
         # Check for optionally-present items that were in the second container
         # and not the first.
         for item in result2[conf_dict]:
@@ -895,14 +920,21 @@ def compare_container(first, second, ignore=None):
                 continue
             val1 = result1[conf_dict].get(item)
             val2 = result2[conf_dict][item]
-            if val1 != val2:
-                ret.setdefault(conf_dict, {})[item] = {'old': val1, 'new': val2}
+            if item in ('OomKillDisable',):
+                if bool(val1) != bool(val2):
+                    ret.setdefault(conf_dict, {})[item] = {'old': val1, 'new': val2}
+            else:
+                if item == 'Links':
+                    val1 = _scrub_links(val1, first)
+                    val2 = _scrub_links(val2, second)
+                if val1 != val2:
+                    ret.setdefault(conf_dict, {})[item] = {'old': val1, 'new': val2}
     return ret
 
 
 def login(*registries):
     '''
-    .. versionadded:: 2016.3.7,2016.11.4,Nitrogen
+    .. versionadded:: 2016.3.7,2016.11.4,2017.7.0
 
     Performs a ``docker login`` to authenticate to one or more configured
     repositories. See the documentation at the top of this page to configure
@@ -927,9 +959,9 @@ def login(*registries):
 
     .. code-block:: bash
 
-        salt myminion dockerng.login
-        salt myminion dockerng.login hub
-        salt myminion dockerng.login hub https://mydomain.tld/registry/
+        salt myminion docker.login
+        salt myminion docker.login hub
+        salt myminion docker.login hub https://mydomain.tld/registry/
     '''
     # NOTE: This function uses the "docker login" CLI command so that login
     # information is added to the config.json, since docker-py isn't designed
@@ -978,6 +1010,10 @@ def login(*registries):
             cmd = ['docker', 'login', '-u', username, '-p', password]
             if registry.lower() != 'hub':
                 cmd.append(registry)
+            log.debug(
+                'Attempting to login to docker registry \'%s\' as user \'%s\'',
+                registry, username
+            )
             login_cmd = __salt__['cmd.run_all'](
                 cmd,
                 python_shell=False,
@@ -1283,7 +1319,7 @@ def info():
 
 def inspect(name):
     '''
-    .. versionchanged:: Nitrogen
+    .. versionchanged:: 2017.7.0
         Volumes and networks are now checked, in addition to containers and
         images.
 
@@ -1803,7 +1839,7 @@ def create(image,
         generate one for you (it will be included in the return data).
 
     skip_translate
-        This function translates Salt CLI input into the format which
+        This function translates Salt CLI or SLS input into the format which
         docker-py_ expects. However, in the event that Salt's translation logic
         fails (due to potential changes in the Docker Remote API, or to bugs in
         the translation code), this argument can be used to exert granular
@@ -1867,19 +1903,49 @@ def create(image,
 
     binds
         Files/directories to bind mount. Each bind mount should be passed in
-        the format ``<host_path>:<container_path>:<read_only>``, where
-        ``<read_only>`` is one of ``rw`` (for read-write access) or ``ro`` (for
-        read-only access).  Optionally, the read-only information can be left
-        off the end and the bind mount will be assumed to be read-write.
+        one of the following formats:
+
+        - ``<host_path>:<container_path>`` - ``host_path`` is mounted within
+          the container as ``container_path`` with read-write access.
+        - ``<host_path>:<container_path>:<selinux_context>`` - ``host_path`` is
+          mounted within the container as ``container_path`` with read-write
+          access. Additionally, the specified selinux context will be set
+          within the container.
+        - ``<host_path>:<container_path>:<read_only>`` - ``host_path`` is
+          mounted within the container as ``container_path``, with the
+          read-only or read-write setting explicitly defined.
+        - ``<host_path>:<container_path>:<read_only>,<selinux_context>`` -
+          ``host_path`` is mounted within the container as ``container_path``,
+          with the read-only or read-write setting explicitly defined.
+          Additionally, the specified selinux context will be set within the
+          container.
+
+        ``<read_only>`` can be either ``ro`` for read-write access, or ``ro``
+        for read-only access. When omitted, it is assumed to be read-write.
+
+        ``<selinux_context>`` can be ``z`` if the volume is shared between
+        multiple containers, or ``Z`` if the volume should be private.
+
+        .. note::
+            When both ``<read_only>`` and ``<selinux_context>`` are specified,
+            there must be a comma before ``<selinux_context>``.
+
+        Binds can be expressed as a comma-separated list or a Python list,
+        however in cases where both ro/rw and an selinux context are specified,
+        the binds *must* be specified as a Python list.
 
         Examples:
 
         - ``binds=/srv/www:/var/www:ro``
         - ``binds=/srv/www:/var/www:rw``
         - ``binds=/srv/www:/var/www``
+        - ``binds="['/srv/www:/var/www:ro,Z']"``
+        - ``binds="['/srv/www:/var/www:rw,Z']"``
+        - ``binds=/srv/www:/var/www:Z``
 
         .. note::
-            The second and third examples above are equivalent.
+            The second and third examples above are equivalent to each other,
+            as are the last two examples.
 
     blkio_weight
         Block IO weight (relative weight), accepts a weight value between 10
@@ -1898,15 +1964,20 @@ def create(image,
         comma-separated list or a Python list. Requires Docker 1.2.0 or
         newer.
 
-        Example: ``cap_add=SYS_ADMIN,MKNOD``, ``cap_add="[SYS_ADMIN, MKNOD]"``
+        Examples:
+
+        - ``cap_add=SYS_ADMIN,MKNOD``
+        - ``cap_add="[SYS_ADMIN, MKNOD]"``
 
     cap_drop
         List of capabilities to drop within the container. Can be passed as a
         comma-separated string or a Python list. Requires Docker 1.2.0 or
         newer.
 
-        Example: ``cap_drop=SYS_ADMIN,MKNOD``,
-        ``cap_drop="[SYS_ADMIN, MKNOD]"``
+        Examples:
+
+        - ``cap_drop=SYS_ADMIN,MKNOD``,
+        - ``cap_drop="[SYS_ADMIN, MKNOD]"``
 
     command (or *cmd*)
         Command to run in the container
@@ -2030,13 +2101,15 @@ def create(image,
         List of DNS search domains. Can be passed as a comma-separated list
         or a Python list.
 
-        Example: ``dns_search=foo1.domain.tld,foo2.domain.tld`` or
-        ``dns_search="[foo1.domain.tld, foo2.domain.tld]"``
+        Examples:
+
+        - ``dns_search=foo1.domain.tld,foo2.domain.tld``
+        - ``dns_search="[foo1.domain.tld, foo2.domain.tld]"``
 
     domainname
-        Set custom DNS search domains
+        The domain name to use for the container
 
-        Example: ``domainname=domain.tld,domain2.tld``
+        Example: ``domainname=domain.tld``
 
     entrypoint
         Entrypoint for the container. Either a string (e.g. ``"mycmd --arg1
@@ -2481,9 +2554,6 @@ def create(image,
     except Exception:
         pull(image, client_timeout=client_timeout)
 
-    if name is not None and kwargs.get('hostname') is None:
-        kwargs['hostname'] = name
-
     kwargs, unused_kwargs = _get_create_kwargs(
         image=image,
         skip_translate=skip_translate,
@@ -2828,7 +2898,7 @@ def export(name,
             # open the filehandle. If not using gzip, we need to open the
             # filehandle here. We make sure to close it in the "finally" block
             # below.
-            out = salt.utils.fopen(path, 'wb')  # pylint: disable=resource-leakage
+            out = salt.utils.files.fopen(path, 'wb')  # pylint: disable=resource-leakage
         response = _client_wrapper('export', name)
         buf = None
         while buf != '':
@@ -2890,7 +2960,7 @@ def rm_(name, force=False, volumes=False, **kwargs):
         option is set to ``False`` by default to prevent accidental removal of
         a running container.
 
-        .. versionadded:: Nitrogen
+        .. versionadded:: 2017.7.0
 
     volumes : False
         Also remove volumes associated with container
@@ -2908,10 +2978,10 @@ def rm_(name, force=False, volumes=False, **kwargs):
         salt myminion docker.rm mycontainer
         salt myminion docker.rm mycontainer force=True
     '''
-    kwargs = salt.utils.clean_kwargs(**kwargs)
+    kwargs = salt.utils.args.clean_kwargs(**kwargs)
     stop_ = kwargs.pop('stop', False)
     if kwargs:
-        salt.utils.invalid_kwargs(kwargs)
+        salt.utils.args.invalid_kwargs(kwargs)
 
     if state(name) == 'running' and not (force or stop_):
         raise CommandExecutionError(
@@ -2928,7 +2998,7 @@ def rm_(name, force=False, volumes=False, **kwargs):
 
 def rename(name, new_name):
     '''
-    .. versionadded:: Nitrogen
+    .. versionadded:: 2017.7.0
 
     Renames a container. Returns ``True`` if successful, and raises an error if
     the API returns one. If unsuccessful and the API returns no error (should
@@ -3060,7 +3130,7 @@ def build(path=None,
     stream_data = []
     for line in response:
         stream_data.extend(
-            json.loads(salt.utils.to_str(line), cls=DockerJSONDecoder)
+            json.loads(salt.utils.stringutils.to_str(line), cls=DockerJSONDecoder)
         )
     errors = []
     # Iterate through API response and collect information
@@ -3840,12 +3910,12 @@ def save(name,
             compressor = lzma.LZMACompressor()
 
         try:
-            with salt.utils.fopen(saved_path, 'rb') as uncompressed:
+            with salt.utils.files.fopen(saved_path, 'rb') as uncompressed:
                 if compression != 'gzip':
                     # gzip doesn't use a Compressor object, it uses a .open()
                     # method to open the filehandle. If not using gzip, we need
                     # to open the filehandle here.
-                    out = salt.utils.fopen(path, 'wb')
+                    out = salt.utils.files.fopen(path, 'wb')
                 buf = None
                 while buf != '':
                     buf = uncompressed.read(4096)
@@ -3927,7 +3997,7 @@ def tag_(name, image, force=False):
 # Network Management
 def networks(names=None, ids=None):
     '''
-    .. versionchanged:: Nitrogen
+    .. versionchanged:: 2017.7.0
         The ``names`` and ``ids`` can be passed as a comma-separated list now,
         as well as a Python list.
 
@@ -4045,7 +4115,7 @@ def connect_container_to_network(container, network_id, ipv4_address=None):
     ipv4_address
         The IPv4 address to connect to the container
 
-        .. versionadded:: Nitrogen
+        .. versionadded:: 2017.7.0
 
     CLI Example:
 
@@ -4362,7 +4432,7 @@ def stop(name, timeout=None, **kwargs):
         Timeout in seconds after which the container will be killed (if it has
         not yet gracefully shut down)
 
-        .. versionchanged:: Nitrogen
+        .. versionchanged:: 2017.7.0
             If this argument is not passed, then the container's configuration
             will be checked. If the container was created using the
             ``stop_timeout`` argument, then the configured timeout will be
@@ -5138,7 +5208,7 @@ def _gather_pillar(pillarenv, pillar_override, **grains):
         # Not sure if these two are correct
         __opts__['id'],
         __opts__['environment'],
-        pillar=pillar_override,
+        pillar_override=pillar_override,
         pillarenv=pillarenv
     )
     ret = pillar.compile_pillar()
@@ -5362,7 +5432,7 @@ def sls_build(name, base='opensuse/python', mods=None, saltenv='base',
         salt myminion docker.sls_build imgname base=mybase mods=rails,web
 
     '''
-    create_kwargs = salt.utils.clean_kwargs(**copy.deepcopy(kwargs))
+    create_kwargs = salt.utils.args.clean_kwargs(**copy.deepcopy(kwargs))
     for key in ('image', 'name', 'cmd', 'interactive', 'tty'):
         try:
             del create_kwargs[key]

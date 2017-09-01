@@ -324,6 +324,7 @@ from __future__ import absolute_import, with_statement
 import os
 import sys
 import time
+import copy
 import signal
 import datetime
 import itertools
@@ -332,14 +333,20 @@ import logging
 import errno
 import random
 import yaml
+import copy
 
 # Import Salt libs
 import salt.config
-import salt.utils
-import salt.utils.jid
-import salt.utils.process
+import salt.utils  # Can be removed once appendproctitle and daemonize_if are moved
 import salt.utils.args
+import salt.utils.error
+import salt.utils.event
+import salt.utils.files
+import salt.utils.jid
 import salt.utils.minion
+import salt.utils.platform
+import salt.utils.process
+import salt.utils.stringutils
 import salt.loader
 import salt.minion
 import salt.payload
@@ -348,11 +355,10 @@ import salt.exceptions
 import salt.log.setup as log_setup
 import salt.defaults.exitcodes
 from salt.utils.odict import OrderedDict
-from salt.utils.process import os_is_running, default_signals, SignalHandlingMultiprocessingProcess
 from salt.utils.yamldumper import SafeOrderedDumper
 
 # Import 3rd-party libs
-import salt.ext.six as six
+from salt.ext import six
 
 # pylint: disable=import-error
 try:
@@ -471,9 +477,9 @@ class Schedule(object):
         schedule_conf = os.path.join(minion_d_dir, '_schedule.conf')
         log.debug('Persisting schedule')
         try:
-            with salt.utils.fopen(schedule_conf, 'wb+') as fp_:
+            with salt.utils.files.fopen(schedule_conf, 'wb+') as fp_:
                 fp_.write(
-                    salt.utils.to_bytes(
+                    salt.utils.stringutils.to_bytes(
                         yaml.dump(
                             {'schedule': self._get_schedule(include_pillar=False)},
                             Dumper=SafeOrderedDumper
@@ -662,12 +668,12 @@ class Schedule(object):
 
         multiprocessing_enabled = self.opts.get('multiprocessing', True)
         if multiprocessing_enabled:
-            thread_cls = SignalHandlingMultiprocessingProcess
+            thread_cls = salt.utils.process.SignalHandlingMultiprocessingProcess
         else:
             thread_cls = threading.Thread
 
         if multiprocessing_enabled:
-            with default_signals(signal.SIGINT, signal.SIGTERM):
+            with salt.utils.process.default_signals(signal.SIGINT, signal.SIGTERM):
                 proc = thread_cls(target=self.handle_func, args=(multiprocessing_enabled, func, data))
                 # Reset current signals before starting the process in
                 # order not to inherit the current signal handlers
@@ -741,7 +747,8 @@ class Schedule(object):
         '''
         Execute this method in a multiprocess or thread
         '''
-        if salt.utils.is_windows() or self.opts.get('transport') == 'zeromq':
+        if salt.utils.platform.is_windows() \
+                or self.opts.get('transport') == 'zeromq':
             # Since function references can't be pickled and pickling
             # is required when spawning new processes on Windows, regenerate
             # the functions and returners.
@@ -788,7 +795,8 @@ class Schedule(object):
                 if 'schedule' in job:
                     log.debug('schedule.handle_func: Checking job against '
                               'fun {0}: {1}'.format(ret['fun'], job))
-                    if ret['schedule'] == job['schedule'] and os_is_running(job['pid']):
+                    if ret['schedule'] == job['schedule'] \
+                            and salt.utils.process.os_is_running(job['pid']):
                         jobcount += 1
                         log.debug(
                             'schedule.handle_func: Incrementing jobcount, now '
@@ -801,7 +809,7 @@ class Schedule(object):
                                     ret['schedule'], data['maxrunning']))
                             return False
 
-        if multiprocessing_enabled and not salt.utils.is_windows():
+        if multiprocessing_enabled and not salt.utils.platform.is_windows():
             # Reconfigure multiprocessing logging after daemonizing
             log_setup.setup_multiprocessing_logging()
 
@@ -816,7 +824,7 @@ class Schedule(object):
                 log.debug('schedule.handle_func: adding this job to the jobcache '
                           'with data {0}'.format(ret))
                 # write this to /var/cache/salt/minion/proc
-                with salt.utils.fopen(proc_fn, 'w+b') as fp_:
+                with salt.utils.files.fopen(proc_fn, 'w+b') as fp_:
                     fp_.write(salt.payload.Serial(self.opts).dumps(ret))
 
             args = tuple()
@@ -827,7 +835,7 @@ class Schedule(object):
             kwargs = {}
             if 'kwargs' in data:
                 kwargs = data['kwargs']
-                ret['fun_args'].append(data['kwargs'])
+                ret['fun_args'].append(copy.deepcopy(kwargs))
 
             if func not in self.functions:
                 ret['return'] = self.functions.missing_fun_string(func)
@@ -840,7 +848,7 @@ class Schedule(object):
             if argspec.keywords:
                 # this function accepts **kwargs, pack in the publish data
                 for key, val in six.iteritems(ret):
-                    kwargs['__pub_{0}'.format(key)] = val
+                    kwargs['__pub_{0}'.format(key)] = copy.deepcopy(val)
 
             ret['return'] = self.functions[func](*args, **kwargs)
 
@@ -852,7 +860,7 @@ class Schedule(object):
                     ret['ret_kwargs'] = data['return_kwargs']
                 rets = []
                 for returner in [data_returner, self.schedule_returner]:
-                    if isinstance(returner, str):
+                    if isinstance(returner, six.string_types):
                         rets.append(returner)
                     elif isinstance(returner, list):
                         rets.extend(returner)
@@ -884,26 +892,39 @@ class Schedule(object):
             ret['success'] = False
             ret['retcode'] = 254
         finally:
-            try:
-                # Only attempt to return data to the master
-                # if the scheduled job is running on a minion.
-                if '__role' in self.opts and self.opts['__role'] == 'minion':
-                    if 'return_job' in data and not data['return_job']:
-                        pass
-                    else:
-                        # Send back to master so the job is included in the job list
-                        mret = ret.copy()
-                        mret['jid'] = 'req'
-                        if data.get('return_job') == 'nocache':
-                            # overwrite 'req' to signal to master that this job shouldn't be stored
-                            mret['jid'] = 'nocache'
-                        event = salt.utils.event.get_event('minion', opts=self.opts, listen=False)
-                        load = {'cmd': '_return', 'id': self.opts['id']}
-                        for key, value in six.iteritems(mret):
-                            load[key] = value
-                        event.fire_event(load, '__schedule_return')
+            # Only attempt to return data to the master if the scheduled job is running
+            # on a master itself or a minion.
+            if '__role' in self.opts and self.opts['__role'] in ('master', 'minion'):
+                # The 'return_job' option is enabled by default even if not set
+                if 'return_job' in data and not data['return_job']:
+                    pass
+                else:
+                    # Send back to master so the job is included in the job list
+                    mret = ret.copy()
+                    mret['jid'] = 'req'
+                    if data.get('return_job') == 'nocache':
+                        # overwrite 'req' to signal to master that
+                        # this job shouldn't be stored
+                        mret['jid'] = 'nocache'
+                    load = {'cmd': '_return', 'id': self.opts['id']}
+                    for key, value in six.iteritems(mret):
+                        load[key] = value
 
-                log.debug('schedule.handle_func: Removing {0}'.format(proc_fn))
+                    if '__role' in self.opts and self.opts['__role'] == 'minion':
+                        event = salt.utils.event.get_event('minion',
+                                                           opts=self.opts,
+                                                           listen=False)
+                    elif '__role' in self.opts and self.opts['__role'] == 'master':
+                        event = salt.utils.event.get_master_event(self.opts,
+                                                                  self.opts['sock_dir'])
+                    try:
+                        event.fire_event(load, '__schedule_return')
+                    except Exception as exc:
+                        log.exception("Unhandled exception firing event: {0}".format(exc))
+
+            log.debug('schedule.handle_func: Removing {0}'.format(proc_fn))
+
+            try:
                 os.unlink(proc_fn)
             except OSError as exc:
                 if exc.errno == errno.EEXIST or exc.errno == errno.ENOENT:
@@ -1115,21 +1136,28 @@ class Schedule(object):
                                 log.error('Invalid date string {0}. '
                                           'Ignoring job {1}.'.format(i, job))
                                 continue
-                        when = int(time.mktime(when__.timetuple()))
-                        if when >= now:
-                            _when.append(when)
+                        _when.append(int(time.mktime(when__.timetuple())))
 
                     if data['_splay']:
                         _when.append(data['_splay'])
 
+                    # Sort the list of "whens" from earlier to later schedules
                     _when.sort()
+
+                    for i in _when:
+                        if i < now and len(_when) > 1:
+                            # Remove all missed schedules except the latest one.
+                            # We need it to detect if it was triggered previously.
+                            _when.remove(i)
+
                     if _when:
-                        # Grab the first element
-                        # which is the next run time
+                        # Grab the first element, which is the next run time or
+                        # last scheduled time in the past.
                         when = _when[0]
 
                         if '_run' not in data:
-                            data['_run'] = True
+                            # Prevent run of jobs from the past
+                            data['_run'] = bool(when >= now)
 
                         if not data['_next_fire_time']:
                             data['_next_fire_time'] = when
@@ -1197,14 +1225,23 @@ class Schedule(object):
                     log.error('Missing python-croniter. Ignoring job {0}'.format(job))
                     continue
 
-                if not data['_next_fire_time'] or \
-                        data['_next_fire_time'] < now:
+                if data['_next_fire_time'] is None:
+                    # Get next time frame for a "cron" job if it has been never
+                    # executed before or already executed in the past.
                     try:
                         data['_next_fire_time'] = int(
                             croniter.croniter(data['cron'], now).get_next())
                     except (ValueError, KeyError):
                         log.error('Invalid cron string. Ignoring')
                         continue
+
+                    # If next job run is scheduled more than 1 minute ahead and
+                    # configured loop interval is longer than that, we should
+                    # shorten it to get our job executed closer to the beginning
+                    # of desired time.
+                    interval = now - data['_next_fire_time']
+                    if interval >= 60 and interval < self.loop_interval:
+                        self.loop_interval = interval
 
             else:
                 continue
@@ -1218,6 +1255,11 @@ class Schedule(object):
                     run = True
                 elif 'when' in data and data['_run']:
                     data['_run'] = False
+                    run = True
+                elif 'cron' in data:
+                    # Reset next scheduled time because it is in the past now,
+                    # and we should trigger the job run, then wait for the next one.
+                    data['_next_fire_time'] = None
                     run = True
                 elif seconds == 0:
                     run = True
@@ -1296,7 +1338,7 @@ class Schedule(object):
 
             multiprocessing_enabled = self.opts.get('multiprocessing', True)
 
-            if salt.utils.is_windows():
+            if salt.utils.platform.is_windows():
                 # Temporarily stash our function references.
                 # You can't pickle function references, and pickling is
                 # required when spawning new processes on Windows.
@@ -1306,13 +1348,13 @@ class Schedule(object):
                 self.returners = {}
             try:
                 if multiprocessing_enabled:
-                    thread_cls = SignalHandlingMultiprocessingProcess
+                    thread_cls = salt.utils.process.SignalHandlingMultiprocessingProcess
                 else:
                     thread_cls = threading.Thread
                 proc = thread_cls(target=self.handle_func, args=(multiprocessing_enabled, func, data))
 
                 if multiprocessing_enabled:
-                    with default_signals(signal.SIGINT, signal.SIGTERM):
+                    with salt.utils.process.default_signals(signal.SIGINT, signal.SIGTERM):
                         # Reset current signals before starting the process in
                         # order not to inherit the current signal handlers
                         proc.start()
@@ -1325,7 +1367,7 @@ class Schedule(object):
                 if '_seconds' in data:
                     data['_next_fire_time'] = now + data['_seconds']
                 data['_splay'] = None
-            if salt.utils.is_windows():
+            if salt.utils.platform.is_windows():
                 # Restore our function references.
                 self.functions = functions
                 self.returners = returners
@@ -1340,13 +1382,13 @@ def clean_proc_dir(opts):
 
     for basefilename in os.listdir(salt.minion.get_proc_dir(opts['cachedir'])):
         fn_ = os.path.join(salt.minion.get_proc_dir(opts['cachedir']), basefilename)
-        with salt.utils.fopen(fn_, 'rb') as fp_:
+        with salt.utils.files.fopen(fn_, 'rb') as fp_:
             job = None
             try:
                 job = salt.payload.Serial(opts).load(fp_)
             except Exception:  # It's corrupted
                 # Windows cannot delete an open file
-                if salt.utils.is_windows():
+                if salt.utils.platform.is_windows():
                     fp_.close()
                 try:
                     os.unlink(fn_)
@@ -1361,7 +1403,7 @@ def clean_proc_dir(opts):
                               'pid {0} still exists.'.format(job['pid']))
                 else:
                     # Windows cannot delete an open file
-                    if salt.utils.is_windows():
+                    if salt.utils.platform.is_windows():
                         fp_.close()
                     # Maybe the file is already gone
                     try:

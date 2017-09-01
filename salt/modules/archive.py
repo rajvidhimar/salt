@@ -6,6 +6,7 @@ A module to wrap (non-Windows) archive calls
 '''
 from __future__ import absolute_import
 import contextlib  # For < 2.7 compat
+import copy
 import errno
 import glob
 import logging
@@ -22,7 +23,7 @@ except ImportError:
     from pipes import quote as _quote
 
 # Import third party libs
-import salt.ext.six as six
+from salt.ext import six
 from salt.ext.six.moves.urllib.parse import urlparse as _urlparse  # pylint: disable=no-name-in-module
 try:
     import rarfile
@@ -32,10 +33,15 @@ except ImportError:
 
 # Import salt libs
 from salt.exceptions import SaltInvocationError, CommandExecutionError
-import salt.utils
+import salt.utils.decorators
+import salt.utils.decorators.path
 import salt.utils.files
-import salt.utils.itertools
+import salt.utils.path
+import salt.utils.platform
 import salt.utils.templates
+
+if salt.utils.platform.is_windows():
+    import win32file
 
 # TODO: Check that the passed arguments are correct
 
@@ -187,7 +193,7 @@ def list_(name,
                             info={'error': stderr}
                         )
             else:
-                if not salt.utils.which('tar'):
+                if not salt.utils.path.which('tar'):
                     raise CommandExecutionError('\'tar\' command not available')
                 if decompress_cmd is not None:
                     # Guard against shell injection
@@ -198,7 +204,7 @@ def list_(name,
                     except AttributeError:
                         raise CommandExecutionError('Invalid CLI options')
                 else:
-                    if salt.utils.which('xz') \
+                    if salt.utils.path.which('xz') \
                             and __salt__['cmd.retcode'](['xz', '-t', cached],
                                                         python_shell=False,
                                                         ignore_retcode=True) == 0:
@@ -233,7 +239,7 @@ def list_(name,
             with contextlib.closing(zipfile.ZipFile(cached)) as zip_archive:
                 for member in zip_archive.infolist():
                     path = member.filename
-                    if salt.utils.is_windows():
+                    if salt.utils.platform.is_windows():
                         if path.endswith('/'):
                             # zipfile.ZipInfo objects on windows use forward
                             # slash at end of the directory name.
@@ -249,13 +255,16 @@ def list_(name,
                         else:
                             files.append(path)
 
-                for path in files:
+                _files = copy.deepcopy(files)
+                for path in _files:
                     # ZIP files created on Windows do not add entries
                     # to the archive for directories. So, we'll need to
                     # manually add them.
                     dirname = ''.join(path.rpartition('/')[:2])
                     if dirname:
                         dirs.add(dirname)
+                        if dirname in files:
+                            files.remove(dirname)
             return list(dirs), files, links
         except zipfile.BadZipfile:
             raise CommandExecutionError('{0} is not a ZIP file'.format(name))
@@ -275,7 +284,7 @@ def list_(name,
                     else:
                         files.append(path)
         else:
-            if not salt.utils.which('rar'):
+            if not salt.utils.path.which('rar'):
                 raise CommandExecutionError(
                     'rar command not available, is it installed?'
                 )
@@ -441,7 +450,7 @@ def _expand_sources(sources):
             for path in _glob(source)]
 
 
-@salt.utils.decorators.which('tar')
+@salt.utils.decorators.path.which('tar')
 def tar(options, tarfile, sources=None, dest=None,
         cwd=None, template=None, runas=None):
     '''
@@ -477,7 +486,7 @@ def tar(options, tarfile, sources=None, dest=None,
         Comma delimited list of files to **pack** into the tarfile. Can also be
         passed as a Python list.
 
-        .. versionchanged:: Nitrogen
+        .. versionchanged:: 2017.7.0
             Globbing is now supported for this argument
 
     dest
@@ -502,7 +511,7 @@ def tar(options, tarfile, sources=None, dest=None,
 
         # Create a tarfile
         salt '*' archive.tar -cjvf /tmp/tarfile.tar.bz2 /tmp/file_1,/tmp/file_2
-        # Create a tarfile using globbing (Nitrogen and later)
+        # Create a tarfile using globbing (2017.7.0 and later)
         salt '*' archive.tar -cjvf /tmp/tarfile.tar.bz2 '/tmp/file_*'
         # Unpack a tarfile
         salt '*' archive.tar xf foo.tar dest=/target/directory
@@ -529,7 +538,7 @@ def tar(options, tarfile, sources=None, dest=None,
                                python_shell=False).splitlines()
 
 
-@salt.utils.decorators.which('gzip')
+@salt.utils.decorators.path.which('gzip')
 def gzip(sourcefile, template=None, runas=None, options=None):
     '''
     Uses the gzip command to create gzip files
@@ -569,7 +578,7 @@ def gzip(sourcefile, template=None, runas=None, options=None):
                                python_shell=False).splitlines()
 
 
-@salt.utils.decorators.which('gunzip')
+@salt.utils.decorators.path.which('gunzip')
 def gunzip(gzipfile, template=None, runas=None, options=None):
     '''
     Uses the gunzip command to unpack gzip files
@@ -609,7 +618,7 @@ def gunzip(gzipfile, template=None, runas=None, options=None):
                                python_shell=False).splitlines()
 
 
-@salt.utils.decorators.which('zip')
+@salt.utils.decorators.path.which('zip')
 def cmd_zip(zip_file, sources, template=None, cwd=None, runas=None):
     '''
     .. versionadded:: 2015.5.0
@@ -628,7 +637,7 @@ def cmd_zip(zip_file, sources, template=None, cwd=None, runas=None):
         Comma-separated list of sources to include in the zip file. Sources can
         also be passed in a Python list.
 
-        .. versionchanged:: Nitrogen
+        .. versionchanged:: 2017.7.0
             Globbing is now supported for this argument
 
     template : None
@@ -665,7 +674,7 @@ def cmd_zip(zip_file, sources, template=None, cwd=None, runas=None):
     .. code-block:: bash
 
         salt '*' archive.cmd_zip /tmp/zipfile.zip /tmp/sourcefile1,/tmp/sourcefile2
-        # Globbing for sources (Nitrogen and later)
+        # Globbing for sources (2017.7.0 and later)
         salt '*' archive.cmd_zip /tmp/zipfile.zip '/tmp/sourcefile*'
     '''
     cmd = ['zip', '-r']
@@ -697,7 +706,7 @@ def zip_(zip_file, sources, template=None, cwd=None, runas=None):
         Comma-separated list of sources to include in the zip file. Sources can
         also be passed in a Python list.
 
-        .. versionchanged:: Nitrogen
+        .. versionchanged:: 2017.7.0
             Globbing is now supported for this argument
 
     template : None
@@ -730,7 +739,7 @@ def zip_(zip_file, sources, template=None, cwd=None, runas=None):
     .. code-block:: bash
 
         salt '*' archive.zip /tmp/zipfile.zip /tmp/sourcefile1,/tmp/sourcefile2
-        # Globbing for sources (Nitrogen and later)
+        # Globbing for sources (2017.7.0 and later)
         salt '*' archive.zip /tmp/zipfile.zip '/tmp/sourcefile*'
     '''
     if runas:
@@ -780,10 +789,9 @@ def zip_(zip_file, sources, template=None, cwd=None, runas=None):
                     if os.path.isdir(src):
                         for dir_name, sub_dirs, files in os.walk(src):
                             if cwd and dir_name.startswith(cwd):
-                                arc_dir = salt.utils.relpath(dir_name, cwd)
+                                arc_dir = os.path.relpath(dir_name, cwd)
                             else:
-                                arc_dir = salt.utils.relpath(dir_name,
-                                                             rel_root)
+                                arc_dir = os.path.relpath(dir_name, rel_root)
                             if arc_dir:
                                 archived_files.append(arc_dir + '/')
                                 zfile.write(dir_name, arc_dir)
@@ -794,9 +802,9 @@ def zip_(zip_file, sources, template=None, cwd=None, runas=None):
                                 zfile.write(abs_name, arc_name)
                     else:
                         if cwd and src.startswith(cwd):
-                            arc_name = salt.utils.relpath(src, cwd)
+                            arc_name = os.path.relpath(src, cwd)
                         else:
-                            arc_name = salt.utils.relpath(src, rel_root)
+                            arc_name = os.path.relpath(src, rel_root)
                         archived_files.append(arc_name)
                         zfile.write(src, arc_name)
     except Exception as exc:
@@ -816,7 +824,7 @@ def zip_(zip_file, sources, template=None, cwd=None, runas=None):
     return archived_files
 
 
-@salt.utils.decorators.which('unzip')
+@salt.utils.decorators.path.which('unzip')
 def cmd_unzip(zip_file,
               dest,
               excludes=None,
@@ -1046,7 +1054,7 @@ def unzip(zip_file,
             cleaned_files.extend([x for x in files if x not in excludes])
             for target in cleaned_files:
                 if target not in excludes:
-                    if salt.utils.is_windows() is False:
+                    if salt.utils.platform.is_windows() is False:
                         info = zfile.getinfo(target)
                         # Check if zipped file is a symbolic link
                         if stat.S_ISLNK(info.external_attr >> 16):
@@ -1055,7 +1063,19 @@ def unzip(zip_file,
                             continue
                     zfile.extract(target, dest, password)
                     if extract_perms:
-                        os.chmod(os.path.join(dest, target), zfile.getinfo(target).external_attr >> 16)
+                        if not salt.utils.platform.is_windows():
+                            perm = zfile.getinfo(target).external_attr >> 16
+                            if perm == 0:
+                                umask_ = os.umask(0)
+                                os.umask(umask_)
+                                if target.endswith('/'):
+                                    perm = 0o777 & ~umask_
+                                else:
+                                    perm = 0o666 & ~umask_
+                            os.chmod(os.path.join(dest, target), perm)
+                        else:
+                            win32_attr = zfile.getinfo(target).external_attr & 0xFF
+                            win32file.SetFileAttributes(os.path.join(dest, target), win32_attr)
     except Exception as exc:
         if runas:
             os.seteuid(euid)
@@ -1137,7 +1157,7 @@ def is_encrypted(name, clean=False, saltenv='base'):
     return ret
 
 
-@salt.utils.decorators.which('rar')
+@salt.utils.decorators.path.which('rar')
 def rar(rarfile, sources, template=None, cwd=None, runas=None):
     '''
     Uses `rar for Linux`_ to create rar files
@@ -1151,7 +1171,7 @@ def rar(rarfile, sources, template=None, cwd=None, runas=None):
         Comma-separated list of sources to include in the rar file. Sources can
         also be passed in a Python list.
 
-        .. versionchanged:: Nitrogen
+        .. versionchanged:: 2017.7.0
             Globbing is now supported for this argument
 
     cwd : None
@@ -1176,7 +1196,7 @@ def rar(rarfile, sources, template=None, cwd=None, runas=None):
     .. code-block:: bash
 
         salt '*' archive.rar /tmp/rarfile.rar /tmp/sourcefile1,/tmp/sourcefile2
-        # Globbing for sources (Nitrogen and later)
+        # Globbing for sources (2017.7.0 and later)
         salt '*' archive.rar /tmp/rarfile.rar '/tmp/sourcefile*'
     '''
     cmd = ['rar', 'a', '-idp', '{0}'.format(rarfile)]
@@ -1188,7 +1208,7 @@ def rar(rarfile, sources, template=None, cwd=None, runas=None):
                                python_shell=False).splitlines()
 
 
-@salt.utils.decorators.which_bin(('unrar', 'rar'))
+@salt.utils.decorators.path.which_bin(('unrar', 'rar'))
 def unrar(rarfile, dest, excludes=None, template=None, runas=None, trim_output=False):
     '''
     Uses `rar for Linux`_ to unpack rar files
@@ -1223,7 +1243,7 @@ def unrar(rarfile, dest, excludes=None, template=None, runas=None, trim_output=F
     if isinstance(excludes, six.string_types):
         excludes = [entry.strip() for entry in excludes.split(',')]
 
-    cmd = [salt.utils.which_bin(('unrar', 'rar')),
+    cmd = [salt.utils.path.which_bin(('unrar', 'rar')),
            'x', '-idp', '{0}'.format(rarfile)]
     if excludes is not None:
         for exclude in excludes:
@@ -1267,14 +1287,14 @@ def _render_filenames(filenames, zip_file, saltenv, template):
         '''
         # write out path to temp file
         tmp_path_fn = salt.utils.files.mkstemp()
-        with salt.utils.fopen(tmp_path_fn, 'w+') as fp_:
+        with salt.utils.files.fopen(tmp_path_fn, 'w+') as fp_:
             fp_.write(contents)
         data = salt.utils.templates.TEMPLATE_REGISTRY[template](
             tmp_path_fn,
             to_str=True,
             **kwargs
         )
-        salt.utils.safe_rm(tmp_path_fn)
+        salt.utils.files.safe_rm(tmp_path_fn)
         if not data['result']:
             # Failed to render the template
             raise CommandExecutionError(

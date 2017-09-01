@@ -15,7 +15,7 @@ Dependencies
 - :mod:`NAPALM proxy minion <salt.proxy.napalm>`
 - :mod:`Network-related basic features execution module <salt.modules.napalm_network>`
 
-.. versionadded:: Nitrogen
+.. versionadded:: 2017.7.0
 '''
 
 from __future__ import absolute_import
@@ -62,7 +62,7 @@ def _update_config(template_name,
                    template_mode='755',
                    saltenv=None,
                    template_engine='jinja',
-                   skip_verify=True,
+                   skip_verify=False,
                    defaults=None,
                    test=False,
                    commit=True,
@@ -109,7 +109,7 @@ def managed(name,
             template_mode='755',
             saltenv=None,
             template_engine='jinja',
-            skip_verify=True,
+            skip_verify=False,
             defaults=None,
             test=False,
             commit=True,
@@ -194,9 +194,11 @@ def managed(name,
         - :mod:`py<salt.renderers.py>`
         - :mod:`wempy<salt.renderers.wempy>`
 
-    skip_verify: True
+    skip_verify: False
         If ``True``, hash verification of remote file sources (``http://``, ``https://``, ``ftp://``) will be skipped,
         and the ``source_hash`` argument will be ignored.
+
+        .. versionchanged:: 2017.7.1
 
     test: False
         Dry run? If set to ``True``, will apply the config, discard and return the changes. Default: ``False``

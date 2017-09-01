@@ -4,6 +4,11 @@ Connection module for Amazon VPC
 
 .. versionadded:: 2014.7.0
 
+:depends:
+
+- boto >= 2.8.0
+- boto3 >= 1.2.6
+
 :configuration: This module accepts explicit VPC credentials but can also
     utilize IAM roles assigned to the instance through Instance Profiles.
     Dynamic credentials are then automatically obtained from AWS API and no
@@ -69,8 +74,6 @@ Connection module for Amazon VPC
         error:
           message: error message
 
-:depends: boto
-
 .. versionadded:: 2016.11.0
 
 Functions to request, accept, delete and describe VPC peering connections.
@@ -134,6 +137,7 @@ import random
 import salt.utils.boto
 import salt.utils.boto3
 import salt.utils.compat
+import salt.utils.versions
 from salt.exceptions import SaltInvocationError, CommandExecutionError
 from salt.utils.versions import LooseVersion as _LooseVersion
 
@@ -147,7 +151,7 @@ ACTIVE = 'active'
 log = logging.getLogger(__name__)
 
 # Import third party libs
-import salt.ext.six as six
+from salt.ext import six
 from salt.ext.six.moves import range  # pylint: disable=import-error
 # pylint: disable=import-error
 try:
@@ -2453,9 +2457,10 @@ def describe_route_table(route_table_id=None, route_table_name=None,
 
     '''
 
-    salt.utils.warn_until('Oxygen',
-         'The \'describe_route_table\' method has been deprecated and '
-         'replaced by \'describe_route_tables\'.'
+    salt.utils.versions.warn_until(
+        'Oxygen',
+        'The \'describe_route_table\' method has been deprecated and '
+        'replaced by \'describe_route_tables\'.'
     )
     if not any((route_table_id, route_table_name, tags)):
         raise SaltInvocationError('At least one of the following must be specified: '

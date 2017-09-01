@@ -56,7 +56,7 @@ intended to be used to deploy a file using ``contents_pillar`` with a
     files would not affected by the ``keep_newline`` configuration.  However,
     this module does not actually distinguish between binary and text files.
 
-.. versionchanged:: Nitrogen
+.. versionchanged:: 2017.7.0
     Templating/rendering has been added. You can now specify a default render
     pipeline and a black- and whitelist of (dis)allowed renderers.
 
@@ -180,8 +180,8 @@ import os
 
 # Import salt libs
 import salt.loader
-import salt.utils
 import salt.utils.dictupdate
+import salt.utils.files
 import salt.utils.minions
 import salt.utils.stringio
 import salt.template
@@ -261,7 +261,7 @@ def _construct_pillar(top_dir,
 
             contents = ''
             try:
-                with salt.utils.fopen(file_path, 'rb') as fhr:
+                with salt.utils.files.fopen(file_path, 'rb') as fhr:
                     buf = fhr.read(__opts__['file_buffer_size'])
                     while buf:
                         contents += buf

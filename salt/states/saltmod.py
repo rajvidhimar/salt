@@ -30,10 +30,10 @@ import time
 
 # Import salt libs
 import salt.syspaths
-import salt.utils
+import salt.utils  # Can be removed once check_state_result is moved
 import salt.utils.event
-import salt.ext.six as six
-from salt.ext.six import string_types
+import salt.utils.versions
+from salt.ext import six
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ def state(name,
         The target type to resolve, defaults to ``glob``
 
     expr_form
-        .. deprecated:: Nitrogen
+        .. deprecated:: 2017.7.0
             Use tgt_type instead
 
     ret
@@ -136,7 +136,7 @@ def state(name,
     pillarenv
         The pillar environment to grab pillars from
 
-        .. versionadded:: Nitrogen
+        .. versionadded:: 2017.7.0
 
     saltenv
         The default salt environment to pull sls files from
@@ -175,7 +175,7 @@ def state(name,
     subset
         Number of minions from the targeted set to randomly use
 
-        .. versionadded:: Nitrogen
+        .. versionadded:: 2017.7.0
 
     Examples:
 
@@ -227,7 +227,7 @@ def state(name,
     # remember to remove the expr_form argument from this function when
     # performing the cleanup on this deprecation.
     if expr_form is not None:
-        salt.utils.warn_until(
+        salt.utils.versions.warn_until(
             'Fluorine',
             'the target type should be passed using the \'tgt_type\' '
             'argument instead of \'expr_form\'. Support for using '
@@ -259,14 +259,12 @@ def state(name,
     if pillar:
         cmd_kw['kwarg']['pillar'] = pillar
 
-    # If pillarenv is directly defined, use it
-    if pillarenv:
+    if pillarenv is not None:
         cmd_kw['kwarg']['pillarenv'] = pillarenv
-    # Use pillarenv if it's passed from __opts__ (via state.orchestrate for example)
-    elif __opts__.get('pillarenv'):
-        cmd_kw['kwarg']['pillarenv'] = __opts__['pillarenv']
 
-    cmd_kw['kwarg']['saltenv'] = saltenv if saltenv is not None else __env__
+    if saltenv is not None:
+        cmd_kw['kwarg']['saltenv'] = saltenv
+
     cmd_kw['kwarg']['queue'] = queue
 
     if isinstance(concurrent, bool):
@@ -311,7 +309,7 @@ def state(name,
 
     if fail_minions is None:
         fail_minions = ()
-    elif isinstance(fail_minions, string_types):
+    elif isinstance(fail_minions, six.string_types):
         fail_minions = [minion.strip() for minion in fail_minions.split(',')]
     elif not isinstance(fail_minions, list):
         state_ret.setdefault('warnings', []).append(
@@ -422,7 +420,7 @@ def function(
         The target type, defaults to ``glob``
 
     expr_form
-        .. deprecated:: Nitrogen
+        .. deprecated:: 2017.7.0
             Use tgt_type instead
 
     arg
@@ -459,7 +457,7 @@ def function(
     subset
         Number of minions from the targeted set to randomly use
 
-        .. versionadded:: Nitrogen
+        .. versionadded:: 2017.7.0
 
     '''
     func_ret = {'name': name,
@@ -468,7 +466,7 @@ def function(
            'result': True}
     if kwarg is None:
         kwarg = {}
-    if isinstance(arg, str):
+    if isinstance(arg, six.string_types):
         func_ret['warnings'] = ['Please specify \'arg\' as a list, not a string. '
                            'Modifying in place, but please update SLS file '
                            'to remove this warning.']
@@ -479,7 +477,7 @@ def function(
     # remember to remove the expr_form argument from this function when
     # performing the cleanup on this deprecation.
     if expr_form is not None:
-        salt.utils.warn_until(
+        salt.utils.versions.warn_until(
             'Fluorine',
             'the target type should be passed using the \'tgt_type\' '
             'argument instead of \'expr_form\'. Support for using '
@@ -529,7 +527,7 @@ def function(
 
     if fail_minions is None:
         fail_minions = ()
-    elif isinstance(fail_minions, string_types):
+    elif isinstance(fail_minions, six.string_types):
         fail_minions = [minion.strip() for minion in fail_minions.split(',')]
     elif not isinstance(fail_minions, list):
         func_ret.setdefault('warnings', []).append(
@@ -727,7 +725,7 @@ def runner(name, **kwargs):
     if __opts__.get('test', False):
         ret = {
             'name': name,
-            'result': True,
+            'result': None,
             'changes': {},
             'comment': "Runner function '{0}' would be executed.".format(name)
         }
@@ -792,7 +790,8 @@ def wheel(name, **kwargs):
         jid = None
 
     if __opts__.get('test', False):
-        ret['result'] = True,
+        ret['result'] = None,
+        ret['changes'] = {}
         ret['comment'] = "Wheel function '{0}' would be executed.".format(name)
         return ret
 

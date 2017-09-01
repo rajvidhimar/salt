@@ -56,7 +56,7 @@ from __future__ import absolute_import
 import logging
 
 # Import salt libs
-import salt.ext.six as six
+from salt.ext import six
 from salt.exceptions import CommandExecutionError
 
 # Import third party libs
@@ -162,6 +162,9 @@ class EtcdClient(object):
             log.error("etcd: failed to perform 'watch' operation on key {0} due to connection error".format(key))
             return {}
         except ValueError:
+            return {}
+
+        if result is None:
             return {}
 
         if recurse:

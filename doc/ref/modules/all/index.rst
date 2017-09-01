@@ -9,6 +9,7 @@ execution modules
     .. toctree::
 
         salt.modules.group
+        salt.modules.kernelpkg
         salt.modules.pkg
         salt.modules.user
 
@@ -96,6 +97,7 @@ execution modules
     cytest
     daemontools
     data
+    datadog_api
     ddns
     deb_apache
     deb_postgres
@@ -116,6 +118,8 @@ execution modules
     drac
     dracr
     drbd
+    dummyproxy_package
+    dummyproxy_service
     ebuild
     eix
     elasticsearch
@@ -188,10 +192,13 @@ execution modules
     k8s
     kapacitor
     kerberos
+    kernelpkg_linux_apt
+    kernelpkg_linux_yum
     key
     keyboard
     keystone
     kmod
+    kubernetes
     launchctl
     layman
     ldap3
@@ -293,6 +300,7 @@ execution modules
     opkg
     oracle
     osquery
+    out
     pacman
     pagerduty
     pagerduty_util
@@ -392,7 +400,6 @@ execution modules
     state
     status
     statuspage
-    stormpath
     supervisord
     suse_apache
     svn

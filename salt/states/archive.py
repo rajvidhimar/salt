@@ -17,13 +17,17 @@ import tarfile
 from contextlib import closing
 
 # Import 3rd-party libs
-import salt.ext.six as six
+from salt.ext import six
 from salt.ext.six.moves import shlex_quote as _cmd_quote
 from salt.ext.six.moves.urllib.parse import urlparse as _urlparse  # pylint: disable=no-name-in-module
 
-# Import salt libs
+# Import Salt libs
 import salt.utils
+import salt.utils.args
 import salt.utils.files
+import salt.utils.path
+import salt.utils.platform
+import salt.utils.url
 from salt.exceptions import CommandExecutionError, CommandNotFoundError
 
 log = logging.getLogger(__name__)
@@ -69,7 +73,7 @@ def _update_checksum(cached_source):
         lines = []
         try:
             try:
-                with salt.utils.fopen(cached_source_sum, 'r') as fp_:
+                with salt.utils.files.fopen(cached_source_sum, 'r') as fp_:
                     for line in fp_:
                         try:
                             lines.append(line.rstrip('\n').split(':', 1))
@@ -79,7 +83,7 @@ def _update_checksum(cached_source):
                 if exc.errno != errno.ENOENT:
                     raise
 
-            with salt.utils.fopen(cached_source_sum, 'w') as fp_:
+            with salt.utils.files.fopen(cached_source_sum, 'w') as fp_:
                 for line in lines:
                     if line[0] == hash_type:
                         line[1] = hsum
@@ -98,7 +102,7 @@ def _read_cached_checksum(cached_source, form=None):
         form = __opts__['hash_type']
     path = '.'.join((cached_source, 'hash'))
     try:
-        with salt.utils.fopen(path, 'r') as fp_:
+        with salt.utils.files.fopen(path, 'r') as fp_:
             for line in fp_:
                 # Should only be one line in this file but just in case it
                 # isn't, read only a single line to avoid overuse of memory.
@@ -374,7 +378,7 @@ def extracted(name,
 
         .. versionadded:: 2016.11.0
 
-    source_hash_update
+    source_hash_update : False
         Set this to ``True`` if archive should be extracted if source_hash has
         changed. This would extract regardless of the ``if_missing`` parameter.
 
@@ -571,7 +575,8 @@ def extracted(name,
 
         .. versionchanged:: 2016.11.0
             If omitted, the archive format will be guessed based on the value
-            of the ``source`` argument.
+            of the ``source`` argument. If the minion is running a release
+            older than 2016.11.0, this option is required.
 
     .. _tarfile: https://docs.python.org/2/library/tarfile.html
     .. _zipfile: https://docs.python.org/2/library/zipfile.html
@@ -619,7 +624,7 @@ def extracted(name,
     ret = {'name': name, 'result': False, 'changes': {}, 'comment': ''}
 
     # Remove pub kwargs as they're irrelevant here.
-    kwargs = salt.utils.clean_kwargs(**kwargs)
+    kwargs = salt.utils.args.clean_kwargs(**kwargs)
 
     if not _path_is_abs(name):
         ret['comment'] = '{0} is not an absolute path'.format(name)
@@ -672,7 +677,7 @@ def extracted(name,
                 return ret
 
     if user or group:
-        if salt.utils.is_windows():
+        if salt.utils.platform.is_windows():
             ret['comment'] = \
                 'User/group ownership cannot be enforced on Windows minions'
             return ret
@@ -842,10 +847,10 @@ def extracted(name,
     if source_hash:
         try:
             source_sum = __salt__['file.get_source_sum'](
-                 source=source_match,
-                 source_hash=source_hash,
-                 source_hash_name=source_hash_name,
-                 saltenv=__env__)
+                source=source_match,
+                source_hash=source_hash,
+                source_hash_name=source_hash_name,
+                saltenv=__env__)
         except CommandExecutionError as exc:
             ret['comment'] = exc.strerror
             return ret
@@ -864,9 +869,9 @@ def extracted(name,
 
         if os.path.isdir(cached_source):
             # Prevent a traceback from attempting to read from a directory path
-            salt.utils.rm_rf(cached_source)
+            salt.utils.files.rm_rf(cached_source)
 
-    existing_cached_source_sum = _read_cached_checksum(cached_source) \
+    existing_cached_source_sum = _read_cached_checksum(cached_source)
 
     if source_is_local:
         # No need to download archive, it's local to the minion
@@ -888,7 +893,9 @@ def extracted(name,
             ret['result'] = None
             ret['comment'] = (
                 'Archive {0} would be downloaded to cache and checked to '
-                'discover if extraction is necessary'.format(source_match)
+                'discover if extraction is necessary'.format(
+                    salt.utils.url.redact_http_basic_auth(source_match)
+                )
             )
             return ret
 
@@ -918,18 +925,28 @@ def extracted(name,
 
         try:
             if not file_result['result']:
-                log.debug('failed to download {0}'.format(source_match))
+                log.debug(
+                    'failed to download %s',
+                    salt.utils.url.redact_http_basic_auth(source_match)
+                )
                 return file_result
         except TypeError:
             if not file_result:
-                log.debug('failed to download {0}'.format(source_match))
+                log.debug(
+                    'failed to download %s',
+                    salt.utils.url.redact_http_basic_auth(source_match)
+                )
                 return file_result
 
-        if source_hash:
-            _update_checksum(cached_source)
-
     else:
-        log.debug('Archive %s is already in cache', source_match)
+        log.debug(
+            'Archive %s is already in cache',
+            salt.utils.url.redact_http_basic_auth(source_match)
+        )
+
+    if source_hash and source_hash_update and not skip_verify:
+        # Create local hash sum file if we're going to track sum update
+        _update_checksum(cached_source)
 
     if archive_format == 'zip' and not password:
         log.debug('Checking %s to see if it is password-protected',
@@ -950,7 +967,7 @@ def extracted(name,
                 ret['comment'] = (
                     'Archive {0} is password-protected, but no password was '
                     'specified. Please set the \'password\' argument.'.format(
-                        source_match
+                        salt.utils.url.redact_http_basic_auth(source_match)
                     )
                 )
                 return ret
@@ -1103,7 +1120,7 @@ def extracted(name,
                         for path in incorrect_type:
                             full_path = os.path.join(name, path)
                             try:
-                                salt.utils.rm_rf(full_path.rstrip(os.sep))
+                                salt.utils.files.rm_rf(full_path.rstrip(os.sep))
                                 ret['changes'].setdefault(
                                     'removed', []).append(full_path)
                                 extraction_needed = True
@@ -1134,11 +1151,20 @@ def extracted(name,
     created_destdir = False
 
     if extraction_needed:
+        if source_is_local and source_hash and not skip_verify:
+            ret['result'] = __salt__['file.check_hash'](source_match, source_sum['hsum'])
+            if not ret['result']:
+                ret['comment'] = \
+                    '{0} does not match the desired source_hash {1}'.format(
+                        source_match, source_sum['hsum']
+                    )
+                return ret
+
         if __opts__['test']:
             ret['result'] = None
             ret['comment'] = \
                 'Archive {0} would be extracted to {1}'.format(
-                    source_match,
+                    salt.utils.url.redact_http_basic_auth(source_match),
                     name
                 )
             if clean and contents is not None:
@@ -1153,7 +1179,7 @@ def extracted(name,
                 full_path = os.path.join(name, path)
                 try:
                     log.debug('Removing %s', full_path)
-                    salt.utils.rm_rf(full_path.rstrip(os.sep))
+                    salt.utils.files.rm_rf(full_path.rstrip(os.sep))
                     ret['changes'].setdefault(
                         'removed', []).append(full_path)
                 except OSError as exc:
@@ -1171,7 +1197,7 @@ def extracted(name,
                 return ret
 
         if not os.path.isdir(name):
-            __salt__['file.makedirs'](name, user=user)
+            __states__['file.directory'](name, user=user, makedirs=True)
             created_destdir = True
 
         log.debug('Extracting {0} to {1}'.format(cached_source, name))
@@ -1195,6 +1221,7 @@ def extracted(name,
                                                       options=options,
                                                       trim_output=trim_output,
                                                       password=password,
+                                                      extract_perms=extract_perms,
                                                       **kwargs)
             elif archive_format == 'rar':
                 try:
@@ -1214,7 +1241,7 @@ def extracted(name,
                             if trim_output:
                                 files = files[:trim_output]
                     except tarfile.ReadError:
-                        if salt.utils.which('xz'):
+                        if salt.utils.path.which('xz'):
                             if __salt__['cmd.retcode'](
                                     ['xz', '-t', cached_source],
                                     python_shell=False,
@@ -1272,7 +1299,7 @@ def extracted(name,
                             )
                             return ret
                 else:
-                    if not salt.utils.which('tar'):
+                    if not salt.utils.path.which('tar'):
                         ret['comment'] = (
                             'tar command not available, it might not be '
                             'installed on minion'
@@ -1421,13 +1448,18 @@ def extracted(name,
             if created_destdir:
                 ret['changes']['directories_created'] = [name]
             ret['changes']['extracted_files'] = files
-            ret['comment'] = '{0} extracted to {1}'.format(source_match, name)
+            ret['comment'] = '{0} extracted to {1}'.format(
+                salt.utils.url.redact_http_basic_auth(source_match),
+                name,
+            )
             _add_explanation(ret, source_hash_trigger, contents_missing)
             ret['result'] = True
 
         else:
             ret['result'] = False
-            ret['comment'] = 'Can\'t extract content of {0}'.format(source_match)
+            ret['comment'] = 'No files were extracted from {0}'.format(
+                salt.utils.url.redact_http_basic_auth(source_match)
+            )
     else:
         ret['result'] = True
         if if_missing_path_exists:

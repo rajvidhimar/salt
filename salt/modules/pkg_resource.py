@@ -5,6 +5,7 @@ Resources needed by pkg providers
 
 # Import python libs
 from __future__ import absolute_import
+import copy
 import fnmatch
 import logging
 import os
@@ -12,10 +13,11 @@ import pprint
 
 # Import third party libs
 import yaml
-import salt.ext.six as six
+from salt.ext import six
 
 # Import salt libs
 import salt.utils
+import salt.utils.versions
 from salt.exceptions import SaltInvocationError
 
 log = logging.getLogger(__name__)
@@ -104,7 +106,7 @@ def parse_targets(name=None,
         salt '*' pkg_resource.parse_targets
     '''
     if '__env__' in kwargs:
-        salt.utils.warn_until(
+        salt.utils.versions.warn_until(
             'Oxygen',
             'Parameter \'__env__\' has been detected in the argument list.  This '
             'parameter is no longer used and has been replaced by \'saltenv\' '
@@ -114,6 +116,8 @@ def parse_targets(name=None,
 
     if __grains__['os'] == 'MacOS' and sources:
         log.warning('Parameter "sources" ignored on MacOS hosts.')
+
+    version = kwargs.get('version')
 
     if pkgs and sources:
         log.error('Only one of "pkgs" and "sources" can be used.')
@@ -129,6 +133,9 @@ def parse_targets(name=None,
             return [name], 'advisory'
 
     elif pkgs:
+        if version is not None:
+            log.warning('\'version\' argument will be ignored for multiple '
+                        'package targets')
         pkgs = _repack_pkgs(pkgs, normalize=normalize)
         if not pkgs:
             return None, None
@@ -136,6 +143,9 @@ def parse_targets(name=None,
             return pkgs, 'repository'
 
     elif sources and __grains__['os'] != 'MacOS':
+        if version is not None:
+            log.warning('\'version\' argument will be ignored for multiple '
+                        'package targets')
         sources = pack_sources(sources, normalize=normalize)
         if not sources:
             return None, None
@@ -162,9 +172,9 @@ def parse_targets(name=None,
         if normalize:
             _normalize_name = \
                 __salt__.get('pkg.normalize_name', lambda pkgname: pkgname)
-            packed = dict([(_normalize_name(x), None) for x in name.split(',')])
+            packed = dict([(_normalize_name(x), version) for x in name.split(',')])
         else:
-            packed = dict([(x, None) for x in name.split(',')])
+            packed = dict([(x, version) for x in name.split(',')])
         return packed, 'repository'
 
     else:
@@ -298,3 +308,31 @@ def check_extra_requirements(pkgname, pkgver):
         return __salt__['pkg.check_extra_requirements'](pkgname, pkgver)
 
     return True
+
+
+def format_pkg_list(packages, versions_as_list, attr):
+    '''
+    Formats packages according to parameters for list_pkgs.
+    '''
+    ret = copy.deepcopy(packages)
+    if attr:
+        requested_attr = set(['version', 'arch', 'install_date', 'install_date_time_t'])
+
+        if attr != 'all':
+            requested_attr &= set(attr + ['version'])
+
+        for name in ret:
+            versions = []
+            for all_attr in ret[name]:
+                filtered_attr = {}
+                for key in requested_attr:
+                    filtered_attr[key] = all_attr[key]
+                versions.append(filtered_attr)
+            ret[name] = versions
+        return ret
+
+    for name in ret:
+        ret[name] = [d['version'] for d in ret[name]]
+    if not versions_as_list:
+        stringify(ret)
+    return ret

@@ -11,11 +11,11 @@ from __future__ import absolute_import
 import gzip
 
 # Import Salt libs
-import salt.utils
+import salt.utils.files
 
 # Import 3rd-party libs
-import salt.ext.six as six
-from salt.ext.six import BytesIO, StringIO
+from salt.ext import six
+from salt.ext.six import BytesIO
 
 
 class GzipFile(gzip.GzipFile):
@@ -90,13 +90,13 @@ def compress_file(fh_, compresslevel=9, chunk_size=1048576):
         raise ValueError('chunk_size must be an integer')
     try:
         while bytes_read == chunk_size:
-            buf = StringIO()
+            buf = BytesIO()
             with open_fileobj(buf, 'wb', compresslevel) as ogz:
                 try:
                     bytes_read = ogz.write(fh_.read(chunk_size))
                 except AttributeError:
                     # Open the file and re-attempt the read
-                    fh_ = salt.utils.fopen(fh_, 'rb')
+                    fh_ = salt.utils.files.fopen(fh_, 'rb')
                     bytes_read = ogz.write(fh_.read(chunk_size))
             yield buf.getvalue()
     finally:

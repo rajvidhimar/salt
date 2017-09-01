@@ -19,17 +19,19 @@ import re
 import subprocess
 
 # Import salt libs
-import salt.ext.six as six
+from salt.ext import six
 import salt.utils
+import salt.utils.decorators.path
 import salt.utils.files
-import salt.utils.decorators as decorators
+import salt.utils.path
+import salt.utils.platform
 from salt.exceptions import (
     SaltInvocationError,
     CommandExecutionError,
 )
 
 # Import 3rd-party libs
-import salt.ext.six as six
+from salt.ext import six
 from salt.ext.six.moves import range
 
 log = logging.getLogger(__name__)
@@ -41,7 +43,7 @@ if six.PY3:
 
 def __virtual__():
     # TODO: This could work on windows with some love
-    if salt.utils.is_windows():
+    if salt.utils.platform.is_windows():
         return (False, 'The module cannot be loaded on windows.')
     return True
 
@@ -149,20 +151,20 @@ def _replace_auth_key(
 
     try:
         # open the file for both reading AND writing
-        with salt.utils.fopen(full, 'r') as _fh:
+        with salt.utils.files.fopen(full, 'r') as _fh:
             for line in _fh:
                 if line.startswith('#'):
                     # Commented Line
                     lines.append(line)
                     continue
                 comps = re.findall(r'((.*)\s)?(ssh-[a-z0-9-]+|ecdsa-[a-z0-9-]+)\s([a-zA-Z0-9+/]+={0,2})(\s(.*))?', line)
-                if comps[0][3] == key:
+                if len(comps) > 0 and len(comps[0]) > 3 and comps[0][3] == key:
                     lines.append(auth_line)
                 else:
                     lines.append(line)
             _fh.close()
             # Re-open the file writable after properly closing it
-            with salt.utils.fopen(full, 'w') as _fh:
+            with salt.utils.files.fopen(full, 'w') as _fh:
                 # Write out any changes
                 _fh.writelines(lines)
     except (IOError, OSError) as exc:
@@ -171,7 +173,7 @@ def _replace_auth_key(
         )
 
 
-def _validate_keys(key_file):
+def _validate_keys(key_file, fingerprint_hash_type):
     '''
     Return a dict containing validated keys in the passed file
     '''
@@ -179,7 +181,7 @@ def _validate_keys(key_file):
     linere = re.compile(r'^(.*?)\s?((?:ssh\-|ecds)[\w-]+\s.+)$')
 
     try:
-        with salt.utils.fopen(key_file, 'r') as _fh:
+        with salt.utils.files.fopen(key_file, 'r') as _fh:
             for line in _fh:
                 if line.startswith('#'):
                     # Commented Line
@@ -207,7 +209,7 @@ def _validate_keys(key_file):
                 enc = comps[0]
                 key = comps[1]
                 comment = ' '.join(comps[2:])
-                fingerprint = _fingerprint(key)
+                fingerprint = _fingerprint(key, fingerprint_hash_type)
                 if fingerprint is None:
                     continue
 
@@ -223,7 +225,7 @@ def _validate_keys(key_file):
     return ret
 
 
-def _fingerprint(public_key, fingerprint_hash_type=None):
+def _fingerprint(public_key, fingerprint_hash_type):
     '''
     Return a public key fingerprint based on its base64-encoded representation
 
@@ -240,15 +242,12 @@ def _fingerprint(public_key, fingerprint_hash_type=None):
         was originally hashed with. This defaults to ``sha256`` if not specified.
 
         .. versionadded:: 2016.11.4
-        .. versionchanged:: Nitrogen: default changed from ``md5`` to ``sha256``
+        .. versionchanged:: 2017.7.0: default changed from ``md5`` to ``sha256``
 
     '''
     if fingerprint_hash_type:
         hash_type = fingerprint_hash_type.lower()
     else:
-        # Set fingerprint_hash_type to md5 as default
-        log.warning('Public Key hashing currently defaults to "md5". This will '
-                    'change to "sha256" in the Nitrogen release.')
         hash_type = 'sha256'
 
     try:
@@ -341,7 +340,7 @@ def host_keys(keydir=None, private=True, certs=True):
             if m.group('pub'):
                 kname += m.group('pub')
             try:
-                with salt.utils.fopen(os.path.join(keydir, fn_), 'r') as _fh:
+                with salt.utils.files.fopen(os.path.join(keydir, fn_), 'r') as _fh:
                     # As of RFC 4716 "a key file is a text file, containing a
                     # sequence of lines", although some SSH implementations
                     # (e.g. OpenSSH) manage their own format(s).  Please see
@@ -358,7 +357,9 @@ def host_keys(keydir=None, private=True, certs=True):
     return keys
 
 
-def auth_keys(user=None, config='.ssh/authorized_keys'):
+def auth_keys(user=None,
+              config='.ssh/authorized_keys',
+              fingerprint_hash_type=None):
     '''
     Return the authorized keys for users
 
@@ -388,7 +389,7 @@ def auth_keys(user=None, config='.ssh/authorized_keys'):
             pass
 
         if full and os.path.isfile(full):
-            keys[u] = _validate_keys(full)
+            keys[u] = _validate_keys(full, fingerprint_hash_type)
 
     if old_output_when_one_user:
         if user[0] in keys:
@@ -402,7 +403,8 @@ def auth_keys(user=None, config='.ssh/authorized_keys'):
 def check_key_file(user,
                    source,
                    config='.ssh/authorized_keys',
-                   saltenv='base'):
+                   saltenv='base',
+                   fingerprint_hash_type=None):
     '''
     Check a keyfile from a source destination against the local keys and
     return the keys to change
@@ -416,7 +418,7 @@ def check_key_file(user,
     keyfile = __salt__['cp.cache_file'](source, saltenv)
     if not keyfile:
         return {}
-    s_keys = _validate_keys(keyfile)
+    s_keys = _validate_keys(keyfile, fingerprint_hash_type)
     if not s_keys:
         err = 'No keys detected in {0}. Is file properly ' \
               'formatted?'.format(source)
@@ -432,12 +434,19 @@ def check_key_file(user,
                 s_keys[key]['enc'],
                 s_keys[key]['comment'],
                 s_keys[key]['options'],
-                config)
+                config=config,
+                fingerprint_hash_type=fingerprint_hash_type)
         return ret
 
 
-def check_key(user, key, enc, comment, options, config='.ssh/authorized_keys',
-              cache_keys=None):
+def check_key(user,
+              key,
+              enc,
+              comment,
+              options,
+              config='.ssh/authorized_keys',
+              cache_keys=None,
+              fingerprint_hash_type=None):
     '''
     Check to see if a key needs updating, returns "update", "add" or "exists"
 
@@ -450,7 +459,9 @@ def check_key(user, key, enc, comment, options, config='.ssh/authorized_keys',
     if cache_keys is None:
         cache_keys = []
     enc = _refine_enc(enc)
-    current = auth_keys(user, config)
+    current = auth_keys(user,
+                        config=config,
+                        fingerprint_hash_type=fingerprint_hash_type)
     nline = _format_auth_line(key, enc, comment, options)
 
     # Removing existing keys from the auth_keys isn't really a good idea
@@ -479,9 +490,10 @@ def check_key(user, key, enc, comment, options, config='.ssh/authorized_keys',
 
 
 def rm_auth_key_from_file(user,
-             source,
-             config='.ssh/authorized_keys',
-             saltenv='base'):
+                          source,
+                          config='.ssh/authorized_keys',
+                          saltenv='base',
+                          fingerprint_hash_type=None):
     '''
     Remove an authorized key from the specified user's authorized key file,
     using a file as source
@@ -498,7 +510,7 @@ def rm_auth_key_from_file(user,
             'Failed to pull key file from salt file server'
         )
 
-    s_keys = _validate_keys(lfile)
+    s_keys = _validate_keys(lfile, fingerprint_hash_type)
     if not s_keys:
         err = (
             'No keys detected in {0}. Is file properly formatted?'.format(
@@ -514,7 +526,8 @@ def rm_auth_key_from_file(user,
             rval += rm_auth_key(
                 user,
                 key,
-                config
+                config=config,
+                fingerprint_hash_type=fingerprint_hash_type
             )
         # Due to the ability for a single file to have multiple keys, it's
         # possible for a single call to this function to have both "replace"
@@ -528,7 +541,10 @@ def rm_auth_key_from_file(user,
             return 'Key not present'
 
 
-def rm_auth_key(user, key, config='.ssh/authorized_keys'):
+def rm_auth_key(user,
+                key,
+                config='.ssh/authorized_keys',
+                fingerprint_hash_type=None):
     '''
     Remove an authorized key from the specified user's authorized key file
 
@@ -538,7 +554,9 @@ def rm_auth_key(user, key, config='.ssh/authorized_keys'):
 
         salt '*' ssh.rm_auth_key <user> <key>
     '''
-    current = auth_keys(user, config)
+    current = auth_keys(user,
+                        config=config,
+                        fingerprint_hash_type=fingerprint_hash_type)
     linere = re.compile(r'^(.*?)\s?((?:ssh\-|ecds)[\w-]+\s.+)$')
     if key in current:
         # Remove the key
@@ -552,7 +570,7 @@ def rm_auth_key(user, key, config='.ssh/authorized_keys'):
         try:
             # Read every line in the file to find the right ssh key
             # and then write out the correct one. Open the file once
-            with salt.utils.fopen(full, 'r') as _fh:
+            with salt.utils.files.fopen(full, 'r') as _fh:
                 for line in _fh:
                     if line.startswith('#'):
                         # Commented Line
@@ -583,7 +601,7 @@ def rm_auth_key(user, key, config='.ssh/authorized_keys'):
 
             # Let the context manager do the right thing here and then
             # re-open the file in write mode to save the changes out.
-            with salt.utils.fopen(full, 'w') as _fh:
+            with salt.utils.files.fopen(full, 'w') as _fh:
                 _fh.writelines(lines)
         except (IOError, OSError) as exc:
             log.warning('Could not read/write key file: {0}'.format(str(exc)))
@@ -596,7 +614,8 @@ def rm_auth_key(user, key, config='.ssh/authorized_keys'):
 def set_auth_key_from_file(user,
                            source,
                            config='.ssh/authorized_keys',
-                           saltenv='base'):
+                           saltenv='base',
+                           fingerprint_hash_type=None):
     '''
     Add a key to the authorized_keys file, using a file as the source.
 
@@ -613,7 +632,7 @@ def set_auth_key_from_file(user,
             'Failed to pull key file from salt file server'
         )
 
-    s_keys = _validate_keys(lfile)
+    s_keys = _validate_keys(lfile, fingerprint_hash_type)
     if not s_keys:
         err = (
             'No keys detected in {0}. Is file properly formatted?'.format(
@@ -629,11 +648,12 @@ def set_auth_key_from_file(user,
             rval += set_auth_key(
                 user,
                 key,
-                s_keys[key]['enc'],
-                s_keys[key]['comment'],
-                s_keys[key]['options'],
-                config,
-                list(s_keys.keys())
+                enc=s_keys[key]['enc'],
+                comment=s_keys[key]['comment'],
+                options=s_keys[key]['options'],
+                config=config,
+                cache_keys=list(s_keys.keys()),
+                fingerprint_hash_type=fingerprint_hash_type
             )
         # Due to the ability for a single file to have multiple keys, it's
         # possible for a single call to this function to have both "replace"
@@ -656,7 +676,8 @@ def set_auth_key(
         comment='',
         options=None,
         config='.ssh/authorized_keys',
-        cache_keys=None):
+        cache_keys=None,
+        fingerprint_hash_type=None):
     '''
     Add a key to the authorized_keys file. The "key" parameter must only be the
     string of text that is the encoded key. If the key begins with "ssh-rsa"
@@ -683,11 +704,18 @@ def set_auth_key(
     # the same filtering done when reading the authorized_keys file. Apply
     # the same check to ensure we don't insert anything that will not
     # subsequently be read)
-    key_is_valid = _fingerprint(key) is not None
+    key_is_valid = _fingerprint(key, fingerprint_hash_type) is not None
     if not key_is_valid:
         return 'Invalid public key'
 
-    status = check_key(user, key, enc, comment, options, config, cache_keys)
+    status = check_key(user,
+                       key,
+                       enc,
+                       comment,
+                       options,
+                       config=config,
+                       cache_keys=cache_keys,
+                       fingerprint_hash_type=fingerprint_hash_type)
     if status == 'update':
         _replace_auth_key(user, key, enc, comment, options or [], config)
         return 'replace'
@@ -708,7 +736,7 @@ def set_auth_key(
                 os.chown(dpath, uinfo['uid'], uinfo['gid'])
             os.chmod(dpath, 448)
             # If SELINUX is available run a restorecon on the file
-            rcon = salt.utils.which('restorecon')
+            rcon = salt.utils.path.which('restorecon')
             if rcon:
                 cmd = [rcon, dpath]
                 subprocess.call(cmd)
@@ -719,7 +747,7 @@ def set_auth_key(
             new_file = False
 
         try:
-            with salt.utils.fopen(fconfig, 'ab+') as _fh:
+            with salt.utils.files.fopen(fconfig, 'ab+') as _fh:
                 if new_file is False:
                     # Let's make sure we have a new line at the end of the file
                     _fh.seek(1024, 2)
@@ -738,7 +766,7 @@ def set_auth_key(
                 os.chown(fconfig, uinfo['uid'], uinfo['gid'])
             os.chmod(fconfig, 384)
             # If SELINUX is available run a restorecon on the file
-            rcon = salt.utils.which('restorecon')
+            rcon = salt.utils.path.which('restorecon')
             if rcon:
                 cmd = [rcon, fconfig]
                 subprocess.call(cmd)
@@ -765,7 +793,7 @@ def _parse_openssh_output(lines, fingerprint_hash_type=None):
                'fingerprint': fingerprint}
 
 
-@decorators.which('ssh-keygen')
+@salt.utils.decorators.path.which('ssh-keygen')
 def get_known_host(user,
                    hostname,
                    config=None,
@@ -798,7 +826,7 @@ def get_known_host(user,
     return known_hosts[0] if known_hosts else None
 
 
-@decorators.which('ssh-keyscan')
+@salt.utils.decorators.path.which('ssh-keyscan')
 def recv_known_host(hostname,
                     enc=None,
                     port=None,
@@ -836,7 +864,7 @@ def recv_known_host(hostname,
         was originally hashed with. This defaults to ``sha256`` if not specified.
 
         .. versionadded:: 2016.11.4
-        .. versionchanged:: Nitrogen: default changed from ``md5`` to ``sha256``
+        .. versionchanged:: 2017.7.0: default changed from ``md5`` to ``sha256``
 
     CLI Example:
 
@@ -1009,7 +1037,7 @@ def set_known_host(user=None,
         was originally hashed with. This defaults to ``sha256`` if not specified.
 
         .. versionadded:: 2016.11.4
-        .. versionchanged:: Nitrogen: default changed from ``md5`` to ``sha256``
+        .. versionchanged:: 2017.7.0: default changed from ``md5`` to ``sha256``
 
     CLI Example:
 
@@ -1116,7 +1144,7 @@ def set_known_host(user=None,
 
     # write line to known_hosts file
     try:
-        with salt.utils.fopen(full, 'a') as ofile:
+        with salt.utils.files.fopen(full, 'a') as ofile:
             ofile.write(line)
     except (IOError, OSError) as exception:
         raise CommandExecutionError(
@@ -1204,7 +1232,7 @@ def user_keys(user=None, pubfile=None, prvfile=None):
 
             if os.path.exists(fn_):
                 try:
-                    with salt.utils.fopen(fn_, 'r') as _fh:
+                    with salt.utils.files.fopen(fn_, 'r') as _fh:
                         keys[u][keyname] = ''.join(_fh.readlines()).strip()
                 except (IOError, OSError):
                     pass
@@ -1217,7 +1245,7 @@ def user_keys(user=None, pubfile=None, prvfile=None):
     return _keys
 
 
-@decorators.which('ssh-keygen')
+@salt.utils.decorators.path.which('ssh-keygen')
 def hash_known_hosts(user=None, config=None):
     '''
 
@@ -1282,7 +1310,7 @@ def key_is_encrypted(key):
         salt '*' ssh.key_is_encrypted /root/id_rsa
     '''
     try:
-        with salt.utils.fopen(key, 'r') as fp_:
+        with salt.utils.files.fopen(key, 'r') as fp_:
             key_data = fp_.read()
     except (IOError, OSError) as exc:
         # Raise a CommandExecutionError
